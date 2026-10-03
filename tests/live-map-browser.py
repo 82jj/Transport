@@ -1,4 +1,4 @@
-"""Read-only real public map rendering. No request interception or personal positions.
+"""Read-only real public map rendering. No mocked responses or personal positions.
 Only fixed-place map computations are allowed to use POST. No production writes.
 """
 import json,os
@@ -19,7 +19,8 @@ with sync_playwright() as p:
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
   expect(page.locator('#request-map.leaflet-container')).to_be_visible(timeout=30000)
-  page.wait_for_function("[...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+  # A function predicate avoids eval under the application's strict production CSP.
+  page.wait_for_function("() => [...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
   for field,label in [('pickup','الرياض'),('destination','الملك فهد')]:
    page.locator('#select-'+field).click();expect(page.locator('.map-picker .leaflet-container')).to_be_visible(timeout=30000)
    page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('.place-result').first).to_be_visible(timeout=30000)
