@@ -24,14 +24,18 @@ def no_overflow(page):
 
 def fixture(page, role, logged=False, approved=True, orders=None):
  map_assets(page)
- state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False}
+ state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None}
  def handle(route):
   req=route.request; path=req.url.split('/api/',1)[1].split('?',1)[0]
   method=req.method
   if method!='GET':state['writes'].append((path,method,req.post_data_json))
   status=200; result={}
   if path=='maps/config':result={'enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
-  elif path=='maps/search':result={'results':[{'id':'p','label':req.post_data_json['query'],'lat':24.7136,'lng':46.6753}]}
+  elif path=='maps/search':
+   query=req.post_data_json['query']
+   if query=='بحث متأخر':state['pending_search']=route;return
+   if query=='بحث فاشل':status,result=503,{'error':'تعذر البحث الآن'}
+   else:result={'results':[] if query=='بلا نتائج' else [{'id':'p','label':query,'lat':24.7136,'lng':46.6753}]}
   elif path=='maps/snap':result={'point':req.post_data_json['point'],'road':'شارع اختبار','distanceMeters':10}
   elif path=='services':result=CATALOG
   elif path=='quote':
@@ -88,7 +92,33 @@ try:
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.locator('[data-category=home]').click()
    expect(page.locator('#service option')).to_have_count(5)
-   choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');choose_point(page,'destination','عنوان الاختبار');page.locator('#alone').check()
+   # The destination is directly editable; search results select a real map point.
+   expect(page.locator('#destination')).to_be_editable()
+   page.locator('#destination').fill('عنوان الاختبار');expect(page.locator('#destination-results .place-result')).to_have_count(1)
+   page.locator('#destination').press('ArrowDown');page.locator('#destination').press('Enter')
+   expect(page.locator('.map-picker')).to_be_visible();expect(page.locator('#picked-name')).to_have_text('عنوان الاختبار')
+   page.locator('#pick-confirm').click();expect(page.locator('#pick-confirm')).to_have_text('اعتماد هذه النقطة');page.locator('#pick-confirm').click()
+   expect(page.locator('#destination')).to_have_value('عنوان الاختبار')
+   choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');page.locator('#alone').check()
+   # Editing the label must discard the selected point and any existing quote.
+   page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+   page.locator('#destination').fill('بلا نتائج');expect(page.locator('#quote')).to_be_empty();expect(page.locator('#destination-search-status')).to_contain_text('لم نجد')
+   before=sum(x[0]=='quote' for x in st['writes']);page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#toast')).to_contain_text('اعتمد النقطتين');assert sum(x[0]=='quote' for x in st['writes'])==before
+   page.locator('#destination').fill('بحث فاشل');expect(page.locator('#destination-search-status')).to_contain_text('تعذر البحث الآن')
+   page.locator('#destination').fill('بحث متأخر');expect(page.locator('#destination-search-status')).to_contain_text('جاري البحث')
+   page.wait_for_function('document.querySelector("#destination-search-status").textContent.includes("جاري البحث")')
+   # Wait for the intercepted request without blocking the browser event loop.
+   for _ in range(100):
+    if st['pending_search']:break
+    page.wait_for_timeout(20)
+   assert st['pending_search']
+   page.locator('#destination').fill('نتيجة حديثة');expect(page.locator('#destination-results')).to_contain_text('نتيجة حديثة')
+   st['pending_search'].fulfill(status=200,content_type='application/json',body=json.dumps({'results':[{'label':'بحث متأخر','lat':24.71,'lng':46.67}]}))
+   expect(page.locator('#destination-results')).to_contain_text('نتيجة حديثة');expect(page.locator('#destination-results')).not_to_contain_text('بحث متأخر')
+   page.locator('#destination-results .place-result').click();page.locator('.map-picker .close').click()
+   expect(page.locator('#destination')).to_have_value('نتيجة حديثة')
+   choose_point(page,'destination','عنوان الاختبار')
+   check(engine+': typed destination, keyboard result selection, map approval, cleared quote/point on edit, empty/error/retry, stale search discarded and cancel preserves draft')
    page.locator('[data-category=heavy]').click();expect(page.locator('#pickup')).to_have_value('موقع خاص <img src=x onerror=alert(1)>');expect(page.locator('#service option')).to_have_count(3)
    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
    choose_point(page,'destination','وجهة أخرى');expect(page.locator('#quote')).to_be_empty()

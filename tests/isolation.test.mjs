@@ -19,7 +19,7 @@ for(const role of ['user','captain','admin']){
  test(`${role}: independent HTML, script, stylesheet and install identity`,async()=>{
   const health=await call(role,'/healthz');assert.equal(health.data.app,`transport-${role}`);assert.equal(health.data.version,'0.3.0');
   const response=await fetch(paths[role]+'/'),html=await response.text();assert.equal(response.status,200);assert.match(html,new RegExp(`data-app="transport-${role}"`));
-  const assetVersion=role==='admin'?'0.3.0':'concept-5.1';
+  const assetVersion=role==='admin'?'0.3.0':role==='user'?'locations-2':'concept-5.1';
   const scriptSources=[...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(m=>m[1]);
   assert.deepEqual(scriptSources,[`/${role}.js?v=${assetVersion}`]);
   assert.ok(html.includes(`href="/styles.css?v=${assetVersion}"`));
