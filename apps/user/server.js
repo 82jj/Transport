@@ -8,14 +8,14 @@ const root = new URL('./public/', import.meta.url);
 const upstream = process.env.API_ORIGIN;
 if (process.env.NODE_ENV === 'production' && !upstream) throw new Error('API_ORIGIN is required');
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webmanifest':'application/manifest+json','.svg':'image/svg+xml'};
-const headers = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'no-referrer','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
+const headers = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'geolocation=(self)','Content-Security-Policy':"default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://unpkg.com; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
 const json = (res,status,data) => {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
 export const server = http.createServer(async (req,res) => {
   try {
     const url = new URL(req.url,'http://localhost');
     if (url.pathname === '/healthz' && req.method === 'GET') return json(res,200,{ok:true,app:config.id,version:'0.3.0',commit:process.env.RAILWAY_GIT_COMMIT_SHA || 'local'});
     if (url.pathname.startsWith('/api/')) {
-      const allowed = url.pathname === '/api/services' || url.pathname === '/api/quote' || url.pathname.startsWith(config.apiPrefix + '/');
+      const allowed = url.pathname === '/api/services' || url.pathname === '/api/quote' || ['/api/maps/config','/api/maps/search','/api/maps/snap','/api/maps/route'].includes(url.pathname) || url.pathname.startsWith(config.apiPrefix + '/');
       if (!allowed) return json(res,404,{error:'المسار غير موجود'});
       if (!upstream) return json(res,503,{error:'خدمة الطلبات غير متصلة بعد'});
       const method = req.method || 'GET';
@@ -28,7 +28,7 @@ export const server = http.createServer(async (req,res) => {
       const chunks=[]; let size=0;
       for await (const chunk of req) {size += chunk.length;if (size > (config.apiPrefix==='/api/captain' && url.pathname==='/api/captain/application/files'?5600000:32768)) return json(res,413,{error:'الطلب كبير جداً'});chunks.push(chunk);}
       const cookie = (req.headers.cookie || '').split(';').map(x=>x.trim()).find(x=>x.startsWith(config.cookie+'=')) || '';
-      const response = await fetch(new URL(url.pathname + url.search,upstream),{method,headers:{'Content-Type':'application/json',cookie},body:method==='GET'?undefined:Buffer.concat(chunks),redirect:'error',signal:AbortSignal.timeout(10000)});
+      const response = await fetch(new URL(url.pathname + url.search,upstream),{method,headers:{'Content-Type':'application/json',cookie},body:method==='GET'?undefined:Buffer.concat(chunks),redirect:'error',signal:AbortSignal.timeout(20000)});
       const responseHeaders={...headers,'Content-Type':response.headers.get('content-type')||'application/json; charset=utf-8'};
       if(url.pathname.startsWith(config.apiPrefix+'/files/'))responseHeaders['Content-Disposition']=response.headers.get('content-disposition')||'attachment';
       const cookies=response.headers.getSetCookie();if(cookies.length) responseHeaders['Set-Cookie']=cookies;

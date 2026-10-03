@@ -5,6 +5,7 @@ screenshots of the real guest pages. Run: python tests/concept-five-browser.py.
 import argparse, json, os, shutil, subprocess, time, urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright, expect
+from maps_browser_support import map_assets,choose_point
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'artifacts'/'concept-five'; OUT.mkdir(parents=True,exist_ok=True)
@@ -22,13 +23,17 @@ def no_overflow(page):
  assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Horizontal overflow'
 
 def fixture(page, role, logged=False, approved=True, orders=None):
+ map_assets(page)
  state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False}
  def handle(route):
   req=route.request; path=req.url.split('/api/',1)[1].split('?',1)[0]
   method=req.method
   if method!='GET':state['writes'].append((path,method,req.post_data_json))
   status=200; result={}
-  if path=='services':result=CATALOG
+  if path=='maps/config':result={'enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
+  elif path=='maps/search':result={'results':[{'id':'p','label':req.post_data_json['query'],'lat':24.7136,'lng':46.6753}]}
+  elif path=='maps/snap':result={'point':req.post_data_json['point'],'road':'شارع اختبار','distanceMeters':10}
+  elif path=='services':result=CATALOG
   elif path=='quote':
    data=req.post_data_json; s=next(s for ss in CATALOG.values() for s in ss if s['id']==data['serviceId']); result={'serviceId':s['id'],'service':s['name'],'total':62,'currency':'SAR','distanceKm':data['distanceKm']}
   elif not path.startswith(role+'/'):status,result=404,{'error':'Role boundary crossed'}
@@ -44,6 +49,9 @@ def fixture(page, role, logged=False, approved=True, orders=None):
    if state['fail_create']:status,result=503,{'error':'خطأ تجريبي في الاتصال'}
    else:
     data=req.post_data_json;s=next(s for ss in CATALOG.values() for s in ss if s['id']==data['serviceId']);o={**ORDER,**data,'service':s['name']};state['orders']=[o];result=o
+  elif path.endswith('/tracking'):result={**(state['orders'][0] if state['orders'] else {}),'location':None,'stale':False}
+  elif path.endswith('/location-sharing'):result={'enabled':True}
+  elif path.endswith('/location'):result={'ok':True}
   elif path.endswith('/accept'):
    if state['fail_accept']:status,result=409,{'error':'قبله كابتن آخر أو تغيرت حالته'}
    else:state['orders'][0].update(status='accepted',captainAssigned=True);result=state['orders'][0]
@@ -80,10 +88,10 @@ try:
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.locator('[data-category=home]').click()
    expect(page.locator('#service option')).to_have_count(5)
-   page.locator('#pickup').fill('موقع خاص <img src=x onerror=alert(1)>');page.locator('#destination').fill('عنوان الاختبار');page.locator('[name=distance]').fill('8.2');page.locator('#alone').check()
+   choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');choose_point(page,'destination','عنوان الاختبار');page.locator('#alone').check()
    page.locator('[data-category=heavy]').click();expect(page.locator('#pickup')).to_have_value('موقع خاص <img src=x onerror=alert(1)>');expect(page.locator('#service option')).to_have_count(3)
    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
-   page.locator('#destination').fill('وجهة أخرى');expect(page.locator('#quote')).to_be_empty()
+   choose_point(page,'destination','وجهة أخرى');expect(page.locator('#quote')).to_be_empty()
    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();page.locator('#confirm-order').click();expect(page.locator('#account')).to_be_visible()
    page.locator('#account [name=email]').fill('fixture@example.test');page.locator('#account [name=password]').fill('browser-test-password-not-production');page.locator('#account [type=submit]').click();expect(page.locator('#confirm-order')).to_be_visible()
    st['fail_create']=True;page.locator('#confirm-order').click();expect(page.locator('#toast')).to_contain_text('خطأ تجريبي');expect(page.locator('#confirm-order')).to_be_enabled();st['fail_create']=False
@@ -111,7 +119,7 @@ try:
    if args.live:
     for role in ['user','captain']:
      ctx=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=1)
-     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+     page=ctx.new_page();map_assets(page);errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
      mutations=[];page.on('request',lambda r:mutations.append(r.url) if r.method not in ['GET','HEAD','OPTIONS'] else None)
      page.goto(f'https://transport-{role}-isolated-production.up.railway.app/',wait_until='networkidle')
      expect(page.locator('html')).to_have_attribute('data-design','concept-5');expect(page.locator('.concept-five')).to_be_visible();no_overflow(page)

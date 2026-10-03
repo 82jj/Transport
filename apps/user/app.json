@@ -1,1 +1,1 @@
-{"id":"transport-user","apiPrefix":"/api/user","cookie":"transport_user_session","files":["index.html","user.js","styles.css","manifest.webmanifest","icon.svg","base.css"]}
+{"id": "transport-user", "apiPrefix": "/api/user", "cookie": "transport_user_session", "files": ["index.html", "user.js", "styles.css", "manifest.webmanifest", "icon.svg", "base.css", "maps.js", "maps.css", "map-picker.js"]}
