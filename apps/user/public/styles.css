@@ -17,7 +17,7 @@
 .user-app .category-copy>small{font-size:14px;line-height:1.8;color:#405870;font-weight:400}
 .user-app .category-copy>i{width:28px;height:28px;margin-top:12px;background:#1466b8;color:#fff}
 .user-app .home .category-copy>i{background:#117461}
-.user-app .service-art{width:45%;min-width:115px;max-width:190px;filter:none}
+.user-app .service-art{display:block;width:45%;min-width:115px;max-width:190px;height:auto;object-fit:contain;flex-shrink:0;filter:none}
 .user-app .home-reassurance b{font-size:13px;color:#263e55}
 .user-app .home-reassurance small,.user-app .preview-caption{font-size:12px;color:#52657a}
 .user-app .concept-nav span{font-size:12px;color:#52657a}
