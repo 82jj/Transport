@@ -1,0 +1,47 @@
+name: Transport isolation checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: transport-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm run check
+      - run: npm test
+      - name: Build each project with only its own directory
+        run: |
+          for app in user captain admin api; do
+            docker build -t "transport-$app:ci" "apps/$app"
+          done
+  live-isolation:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify the actual public URLs and deployed assets
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: npm run smoke:live

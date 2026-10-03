@@ -1,17 +1,3 @@
-import http from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
-import { randomUUID } from "node:crypto";
-const port=Number(process.env.PORT||3000),root=new URL("./public/",import.meta.url).pathname,appMode=process.env.APP_MODE||"user";
-const mime={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8"};
-const catalog={light:[{id:"pickup-s",name:"بيك أب صغير",base:35,km:3.2},{id:"pickup-d",name:"بيك أب غمارتين",base:45,km:3.6},{id:"pickup-l",name:"بيك أب حمولة كبيرة",base:55,km:4}],heavy:[{id:"dyna",name:"دينا",base:90,km:6},{id:"flatbed",name:"سطحة",base:110,km:7},{id:"trailer",name:"تريلة",base:220,km:10}],home:[{id:"gas",name:"غاز",base:25,km:1.5},{id:"sweet-water",name:"ماء حلو",base:30,km:1.5},{id:"water-s",name:"وايت ماء صغير",base:90,km:2},{id:"water-m",name:"وايت ماء متوسط",base:130,km:2.5},{id:"water-l",name:"وايت ماء كبير",base:180,km:3}]};
-const orders=[],send=(res,c,d)=>{res.writeHead(c,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(d))};
-const parse=req=>new Promise((ok,bad)=>{let s="";req.on("data",c=>s+=c);req.on("end",()=>{try{ok(s?JSON.parse(s):{})}catch(e){bad(e)}})}),service=id=>Object.values(catalog).flat().find(x=>x.id===id);
-http.createServer(async(req,res)=>{const u=new URL(req.url,"http://localhost");
-if(u.pathname==="/healthz")return send(res,200,{ok:true,service:"transport",version:"0.2.0"});
-if(u.pathname==="/api/services"&&req.method==="GET")return send(res,200,catalog);
-if(u.pathname==="/api/quote"&&req.method==="POST"){try{const b=await parse(req),s=service(b.serviceId),km=Math.max(1,Number(b.distanceKm||8));if(!s)return send(res,400,{error:"الخدمة غير موجودة"});return send(res,200,{service:s.name,distanceKm:km,total:Math.ceil(s.base+s.km*km),currency:"SAR"})}catch{return send(res,400,{error:"طلب غير صالح"})}}
-if(u.pathname==="/api/orders"&&req.method==="POST"){try{const b=await parse(req),s=service(b.serviceId),km=Math.max(1,Number(b.distanceKm||8));if(!s)return send(res,400,{error:"الخدمة غير موجودة"});const o={id:randomUUID(),serviceId:s.id,service:s.name,category:b.category,pickup:b.pickup||"نقطة الالتقاء",destination:b.destination||"الوجهة",unaccompanied:!!b.unaccompanied,price:Math.ceil(s.base+s.km*km),status:"searching",createdAt:new Date().toISOString()};orders.unshift(o);return send(res,201,o)}catch{return send(res,400,{error:"طلب غير صالح"})}}
-if(u.pathname==="/api/orders"&&req.method==="GET")return send(res,200,orders);
-const m=u.pathname.match(/^\/api\/orders\/([^/]+)\/status$/);if(m&&req.method==="PATCH"){const o=orders.find(x=>x.id===m[1]);if(!o)return send(res,404,{error:"الطلب غير موجود"});try{const b=await parse(req),allowed=["accepted","to_pickup","arrived","in_transit","delivered","cancelled"];if(!allowed.includes(b.status))return send(res,400,{error:"حالة غير صالحة"});o.status=b.status;o.updatedAt=new Date().toISOString();return send(res,200,o)}catch{return send(res,400,{error:"طلب غير صالح"})}}
-let path=u.pathname==="/"?"index.html":u.pathname.replace(/^\//,"").split("?")[0];if(!["index.html","app.js","styles.css"].includes(path)){res.writeHead(404);return res.end("Not found")}try{const data=await readFile(join(root,path));res.writeHead(200,{"content-type":mime[extname(path)]||"application/octet-stream"});res.end(data)}catch{res.writeHead(404);res.end("Not found")}}).listen(port,"0.0.0.0",()=>console.log(`Transport running on :${port}`));
+// The old combined application is intentionally retired. Deploy one app directory.
+import http from 'node:http';
+http.createServer((req,res)=>{const healthy=req.url==='/healthz';res.writeHead(healthy?200:410,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'});res.end(JSON.stringify(healthy?{ok:true,app:'transport-retired',version:'0.3.0'}:{error:'تم إيقاف الواجهة الجامعة. استخدم رابط التطبيق المستقل.'}));}).listen(Number(process.env.PORT||3000),'0.0.0.0');

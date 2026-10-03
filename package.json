@@ -1,14 +1,1 @@
-{
-  "name": "transport-platform",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "start": "node server.js",
-    "check": "node --check server.js && node --check public/app.js",
-    "test": "node --test"
-  },
-  "engines": {
-    "node": ">=22"
-  }
-}
+{"name":"transport-repository","version":"0.3.0","private":true,"type":"module","engines":{"node":">=22.16 <23"},"scripts":{"start":"node server.js","check":"node tests/check.mjs","test":"node --test --test-concurrency=1 tests/*.test.mjs","smoke:live":"node tests/live-smoke.mjs"}}
