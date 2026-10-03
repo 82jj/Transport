@@ -53,7 +53,7 @@ def fixture(page, role, logged=False, approved=True, orders=None):
  page.route('**/api/**',handle)
  return state
 
-args=argparse.ArgumentParser();args.add_argument('--live',action='store_true');args= args.parse_args()
+args=argparse.ArgumentParser();args.add_argument('--live',action='store_true');args=args.parse_args()
 processes=[]
 try:
  for role,port in [('user',3211),('captain',3212)]:
@@ -70,11 +70,11 @@ try:
    browser=getattr(pw,engine).launch(**options)
    for width in [320,390,430,1024]:
     ctx=browser.new_context(viewport={'width':width,'height':844},device_scale_factor=1)
-    page=ctx.new_page(); errors=[]; page.on('pageerror',lambda e:errors.append(str(e)))
+    page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
     fixture(page,'user');page.goto('http://127.0.0.1:3211/');expect(page.locator('.category-card')).to_have_count(3);no_overflow(page)
     assert 'ثلاث واجهات' not in page.inner_text('body')
     if width==390:page.screenshot(path=str(OUT/f'{engine}-user-home.png'),full_page=True)
-    assert not errors,errors; ctx.close()
+    assert not errors,errors;ctx.close()
    check(engine+': user responsive 320/390/430/1024, three illustrated cards, no role chooser')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.locator('[data-category=home]').click()
@@ -88,19 +88,21 @@ try:
    st['fail_create']=True;page.locator('#confirm-order').click();expect(page.locator('#toast')).to_contain_text('خطأ تجريبي');expect(page.locator('#confirm-order')).to_be_enabled();st['fail_create']=False
    page.locator('#confirm-order').click();expect(page.locator('[data-screen=track]')).to_be_visible();no_overflow(page);assert len(st['orders'])==1
    assert st['orders'][0]['unaccompanied'];assert page.locator('.locations img').count()==0
+   expect(page.locator('#toast')).not_to_be_visible(timeout=6000)
+   assert not page.locator('.concept-nav').is_visible()
    page.screenshot(path=str(OUT/f'{engine}-user-tracking-fixture.png'),full_page=True)
    assert page.locator('.contact-actions button:disabled').count()==2
    page.on('dialog',lambda dialog:dialog.accept());page.locator('#cancel-order').click();expect(page.locator('.screen-header h1')).to_have_text('ملغي')
    assert not errors,errors;ctx.close();check(engine+': request, preserved draft, quote invalidation, login, create failure/retry, escaped addresses, tracking and cancellation')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();st=fixture(page,'captain',logged=True,approved=False);page.goto('http://127.0.0.1:3212/');expect(page.locator('#online')).to_be_disabled();expect(page.locator('body')).to_contain_text('حسابك قيد المراجعة');assert not st['writes'];ctx.close();check(engine+': unapproved captain cannot receive/accept requests')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-   st=fixture(page,'captain',logged=True,approved=True,orders=[dict(ORDER)]);page.goto('http://127.0.0.1:3212/');page.locator('#online').click();page.locator('[data-order]').click();expect(page.locator('[data-screen=offer]')).to_be_visible();no_overflow(page);page.screenshot(path=str(OUT/f'{engine}-captain-offer-fixture.png'),full_page=True)
+   st=fixture(page,'captain',logged=True,approved=True,orders=[dict(ORDER)]);page.goto('http://127.0.0.1:3212/');page.locator('#online').click();page.locator('[data-order]').click();expect(page.locator('[data-screen=offer]')).to_be_visible();no_overflow(page);assert not page.locator('.concept-nav').is_visible();page.screenshot(path=str(OUT/f'{engine}-captain-offer-fixture.png'),full_page=True)
    page.locator('#decline-order').click();assert not any('/accept' in x[0] for x in st['writes']);expect(page.locator('body')).to_contain_text('لا توجد طلبات جديدة');check(engine+': decline only hides the offer; never accepts or mutates its status')
    page.reload();page.locator('#online').click();page.locator('[data-order]').click();page.locator('#accept-order').click();expect(page.locator('[data-screen=trip]')).to_be_visible();assert sum('/accept' in x[0] for x in st['writes'])==1
    for status in ['to_pickup','arrived','in_transit']:
     page.locator('#progress-order').click();expect(page.locator('#progress-order')).to_be_enabled();assert st['orders'][0]['status']==status
    page.screenshot(path=str(OUT/f'{engine}-captain-trip-fixture.png'),full_page=True)
-   page.locator('[data-view=home]').click();page.locator('#online').click();expect(page.locator('[data-order]')).to_have_count(1);page.locator('[data-order]').click()
+   page.locator('.screen-header [data-view=orders]').click();page.locator('[data-view=home]').click();page.locator('#online').click();expect(page.locator('[data-order]')).to_have_count(1);page.locator('[data-order]').click()
    dismiss=lambda dialog:dialog.dismiss();page.on('dialog',dismiss);page.locator('#progress-order').click();assert st['orders'][0]['status']=='in_transit';page.remove_listener('dialog',dismiss)
    page.on('dialog',lambda dialog:dialog.accept());page.locator('#progress-order').click();expect(page.locator('.receipt')).to_be_visible();assert st['orders'][0]['status']=='delivered';no_overflow(page)
    assert not errors,errors;ctx.close();check(engine+': accept once, all trip transitions, active trip visible while offline, delivery confirmation and receipt')

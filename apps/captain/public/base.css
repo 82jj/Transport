@@ -5,3 +5,12 @@ button{font-weight:650}button,a,input,select,summary{-webkit-tap-highlight-color
 @media(max-width:360px){.phone{padding-left:15px;padding-right:15px}.tracking-map{margin-left:-15px;margin-right:-15px}.phone h1{font-size:21px}.section-title>span{font-size:9px}.order-amount{font-size:10px}.trip-facts b{font-size:16px}.bottom-nav span{font-size:9px}.locations b{font-size:14px}.screen-header h1{font-size:18px}}
 @media(min-width:700px){.phone{min-height:100dvh;box-shadow:0 0 80px #0005}.bottom-nav{border-inline:1px solid #e8eff7}.phone:before{content:"";display:block;height:4px;width:32px;background:#d4dfeb;border-radius:20px;margin:0 auto 21px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition:none!important;animation:none!important}}
+/* Focused journey sheets use the top back button, matching the selected design. */
+.phone:is([data-screen=track],[data-screen=offer],[data-screen=trip]){padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+.phone:is([data-screen=track],[data-screen=offer],[data-screen=trip])>.concept-nav,.phone:is([data-screen=track],[data-screen=offer],[data-screen=trip])>footer{display:none}
+.phone[data-screen=offer] .route-preview{height:205px}
+.phone[data-screen=offer] .offer-price{margin:16px 0}
+.phone[data-screen=offer] .offer-price strong{font-size:36px}
+.phone[data-screen=offer] .offer-sheet .locations>div{padding-block:8px}
+.phone[data-screen=offer] .sheet-handle{margin-bottom:12px}
+.phone[data-screen=trip] .tracking-map .route-preview{height:265px}
