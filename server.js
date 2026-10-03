@@ -2,7 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-const port=Number(process.env.PORT||3000),root=new URL("./public/",import.meta.url).pathname;
+const port=Number(process.env.PORT||3000),root=new URL("./public/",import.meta.url).pathname,appMode=process.env.APP_MODE||"user";
 const mime={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8"};
 const catalog={light:[{id:"pickup-s",name:"بيك أب صغير",base:35,km:3.2},{id:"pickup-d",name:"بيك أب غمارتين",base:45,km:3.6},{id:"pickup-l",name:"بيك أب حمولة كبيرة",base:55,km:4}],heavy:[{id:"dyna",name:"دينا",base:90,km:6},{id:"flatbed",name:"سطحة",base:110,km:7},{id:"trailer",name:"تريلة",base:220,km:10}],home:[{id:"gas",name:"غاز",base:25,km:1.5},{id:"sweet-water",name:"ماء حلو",base:30,km:1.5},{id:"water-s",name:"وايت ماء صغير",base:90,km:2},{id:"water-m",name:"وايت ماء متوسط",base:130,km:2.5},{id:"water-l",name:"وايت ماء كبير",base:180,km:3}]};
 const orders=[],send=(res,c,d)=>{res.writeHead(c,{"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(JSON.stringify(d))};
