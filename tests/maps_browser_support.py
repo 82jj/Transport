@@ -5,19 +5,6 @@ from playwright.sync_api import expect
 PNG=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
 P=Path(os.environ.get('LEAFLET_TEST_DIR',str(Path(tempfile.gettempdir())/'wasil-leaflet-test')))
 def map_assets(page):
- # Diagnose emulated device/browser clock differences only in isolated tests.
- # Delegate to the real Geolocation API and preserve the exact position object.
- page.add_init_script("""(() => {
-  let count=0;
-  for(const method of ['getCurrentPosition','watchPosition']){
-   const original=navigator.geolocation[method].bind(navigator.geolocation);
-   navigator.geolocation[method]=(success,...args)=>original(position=>{
-    if(count++<4)console.log('GPS_CLOCK '+JSON.stringify({method,timestamp:position.timestamp,now:Date.now(),ageMs:Date.now()-position.timestamp,visible:document.visibilityState,userAgent:navigator.userAgent}));
-    success(position);
-   },...args);
-  }
- })();""")
- page.on('console',lambda m:print(m.text,flush=True) if m.text.startswith('GPS_CLOCK ') else None)
  P.mkdir(parents=True,exist_ok=True)
  for name,h in [('leaflet.js','20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo='),('leaflet.css','p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=')]:
   f=P/name
