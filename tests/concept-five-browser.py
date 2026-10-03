@@ -22,7 +22,7 @@ def no_overflow(page):
  assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Horizontal overflow'
 
 def fixture(page, role, logged=False, approved=True, orders=None):
- state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False}
+ state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False}
  def handle(route):
   req=route.request; path=req.url.split('/api/',1)[1].split('?',1)[0]
   method=req.method
@@ -33,8 +33,9 @@ def fixture(page, role, logged=False, approved=True, orders=None):
    data=req.post_data_json; s=next(s for ss in CATALOG.values() for s in ss if s['id']==data['serviceId']); result={'serviceId':s['id'],'service':s['name'],'total':62,'currency':'SAR','distanceKm':data['distanceKm']}
   elif not path.startswith(role+'/'):status,result=404,{'error':'Role boundary crossed'}
   elif path==role+'/me':
-   status=200 if state['logged'] else 401;result={'id':'fixture-account','name':'حساب اختبار','approved':state['approved'],'role':role} if state['logged'] else {'error':'سجل الدخول أولاً'}
-  elif path==role+'/login':state['logged']=True;result={'id':'fixture-account','name':'حساب اختبار','approved':state['approved'],'role':role}
+   status=200 if state['logged'] else 401;result={'id':'fixture-account','name':'حساب اختبار','approved':state['approved'],'role':role,'applicationStatus':'approved' if state['approved'] else 'pending','documentsCurrent':True,'online':state['online'],'categories':['light'],'requestedCategories':['light'],'username':'WSFIXTURE'} if state['logged'] else {'error':'سجل الدخول أولاً'}
+  elif path==role+'/login':state['logged']=True;result={'id':'fixture-account','name':'حساب اختبار','approved':state['approved'],'role':role,'online':state['online'],'applicationStatus':'approved','documentsCurrent':True,'categories':['light']}
+  elif path=='captain/availability':state['online']=req.post_data_json['online'];result={'online':state['online']}
   elif path==role+'/register':result={'ok':True}
   elif path==role+'/logout':state['logged']=False;result={'ok':True}
   elif not state['logged']:status,result=401,{'error':'سجل الدخول أولاً'}
@@ -98,7 +99,7 @@ try:
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'captain',logged=True,approved=True,orders=[dict(ORDER)]);page.goto('http://127.0.0.1:3212/');page.locator('#online').click();page.locator('[data-order]').click();expect(page.locator('[data-screen=offer]')).to_be_visible();no_overflow(page);assert not page.locator('.concept-nav').is_visible();page.screenshot(path=str(OUT/f'{engine}-captain-offer-fixture.png'),full_page=True)
    page.locator('#decline-order').click();assert not any('/accept' in x[0] for x in st['writes']);expect(page.locator('body')).to_contain_text('لا توجد طلبات جديدة');check(engine+': decline only hides the offer; never accepts or mutates its status')
-   page.reload();page.locator('#online').click();page.locator('[data-order]').click();page.locator('#accept-order').click();expect(page.locator('[data-screen=trip]')).to_be_visible();assert sum('/accept' in x[0] for x in st['writes'])==1
+   page.reload();page.locator('[data-order]').click();page.locator('#accept-order').click();expect(page.locator('[data-screen=trip]')).to_be_visible();assert sum('/accept' in x[0] for x in st['writes'])==1
    for status in ['to_pickup','arrived','in_transit']:
     page.locator('#progress-order').click();expect(page.locator('#progress-order')).to_be_enabled();assert st['orders'][0]['status']==status
    page.screenshot(path=str(OUT/f'{engine}-captain-trip-fixture.png'),full_page=True)
@@ -111,7 +112,6 @@ try:
     for role in ['user','captain']:
      ctx=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=1)
      page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-     # No interception here: these are the real public HTML/CSS/JS and GET endpoints.
      mutations=[];page.on('request',lambda r:mutations.append(r.url) if r.method not in ['GET','HEAD','OPTIONS'] else None)
      page.goto(f'https://transport-{role}-isolated-production.up.railway.app/',wait_until='networkidle')
      expect(page.locator('html')).to_have_attribute('data-design','concept-5');expect(page.locator('.concept-five')).to_be_visible();no_overflow(page)

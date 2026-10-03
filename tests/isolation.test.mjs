@@ -1,3 +1,4 @@
+import {captainData,PNG,TERMS} from './onboarding-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
@@ -11,7 +12,7 @@ async function freePort(){const server=createServer();await new Promise(resolve=
 async function boot(role,extra={}){const port=extra.PORT || await freePort();let logs='';const process_=spawn(process.execPath,['server.js'],{cwd:new URL(`../apps/${role}/`,import.meta.url),env:{...process.env,NODE_ENV:'test',PORT:String(port),...extra},stdio:['ignore','pipe','pipe']});process_.stdout.on('data',x=>logs+=x);process_.stderr.on('data',x=>logs+=x);const base=`http://127.0.0.1:${port}`;for(let i=0;i<100;i++){if(process_.exitCode!==null)throw new Error(logs);try{const r=await fetch(base+'/healthz');if(r.ok)return {process:process_,base,logs:()=>logs};}catch{}await new Promise(r=>setTimeout(r,30));}process_.kill();throw new Error('Startup timeout '+logs);}
 async function stop(item){if(item.process.exitCode!==null)return;await new Promise(resolve=>{item.process.once('exit',resolve);item.process.kill('SIGTERM');});}
 async function call(role,path,method='GET',body,cookie,extraHeaders={}){const response=await fetch(paths[role]+path,{method,headers:{'Content-Type':'application/json',...(cookie?{cookie}:{}),...extraHeaders},body:body===undefined?undefined:JSON.stringify(body)});return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};}
-async function register(role,email){const created=await call(role,`/api/${role}/register`,'POST',{email,password,name:role==='user'?'مستخدم اختبار':'كابتن اختبار',role:'admin'});assert.equal(created.status,201);const login=await call(role,`/api/${role}/login`,'POST',{email,password});assert.equal(login.status,200);assert.equal(login.data.role,role);return login;}
+async function register(role,email){const created=await call(role,`/api/${role}/register`,'POST',{...(role==='captain'?captainData(email):{}),email,password,confirmPassword:password,name:role==='user'?'مستخدم اختبار':'كابتن اختبار',role:'admin'});assert.equal(created.status,201);const login=await call(role,`/api/${role}/login`,'POST',{email,password});assert.equal(login.status,200);assert.equal(login.data.role,role);if(role==='captain'){for(const kind of ['license','registration','insurance','exterior','interior'])assert.equal((await call(role,'/api/captain/application/files','POST',{kind,base64:PNG},login.cookie)).status,201);assert.equal((await call(role,'/api/captain/application/submit','POST',{termsAccepted:true,termsVersion:TERMS},login.cookie)).status,200);}return login;}
 test.before(async()=>{directory=await mkdtemp(join(tmpdir(),'transport-isolation-'));apiPort=await freePort();backend=await boot('api',{PORT:String(apiPort),DATA_DIR:directory,ADMIN_EMAIL:'admin@example.test',ADMIN_PASSWORD:password});paths.api=backend.base;for(const role of ['user','captain','admin']){const item=await boot(role,{API_ORIGIN:backend.base,APP_MODE:'this-obsolete-value-must-have-no-effect'});frontends.push(item);paths[role]=item.base;}});
 test.after(async()=>{await Promise.all(frontends.map(stop));if(backend)await stop(backend);if(directory)await rm(directory,{recursive:true,force:true});});
 for(const role of ['user','captain','admin']){
@@ -26,7 +27,7 @@ for(const role of ['user','captain','admin']){
   assert.doesNotMatch(html,/اختر طريقة الدخول|ثلاث واجهات|data-r=|src="\/app.js/);
   for(const asset of [`/${role}.js?v=${assetVersion}`,`/styles.css?v=${assetVersion}`,`/base.css?v=${assetVersion}`,'/manifest.webmanifest','/icon.svg']){const r=await fetch(paths[role]+asset);assert.equal(r.status,200,asset);assert.equal(r.headers.get('cache-control'),'no-store');}
   const manifest=await (await fetch(paths[role]+'/manifest.webmanifest')).json();assert.equal(manifest.id,`/${role}-application`);
-  const files=await readdir(new URL(`../apps/${role}/public`,import.meta.url));assert.deepEqual(files.sort(),['base.css','icon.svg','index.html','manifest.webmanifest',`${role}.js`,'styles.css'].sort());
+  const files=await readdir(new URL(`../apps/${role}/public`,import.meta.url));assert.deepEqual(files.sort(),['base.css','icon.svg','index.html','manifest.webmanifest',`${role}.js`,'styles.css',...(role==='captain'?['onboarding.js','onboarding.css']:[])].sort());
  });
  test(`${role}: foreign files, query-mode switching and API paths are isolated`,async()=>{for(const other of ['user','captain','admin'].filter(x=>x!==role)){for(const path of [`/${other}.html`,`/${other}.js`,`/${other}`,`/apps/${other}/public/index.html`,`/api/${other}/orders`]){const r=await fetch(paths[role]+path);assert.equal(r.status,404,`${role}${path}`);}const body=await (await fetch(paths[role]+`/?APP_MODE=${other}&role=${other}`)).text();assert.match(body,new RegExp(`data-app="transport-${role}"`));}for(const path of ['/app.js','/server.js','/package.json','/.env','/app.json','/api/orders'])assert.equal((await fetch(paths[role]+path)).status,404,path);});
  test(`${role}: unauthenticated private reads and cross-origin writes blocked`,async()=>{assert.equal((await call(role,`/api/${role}/orders`)).status,401);const r=await call(role,'/api/quote','POST',{serviceId:'dyna',distanceKm:8},null,{Origin:'https://foreign.example'});assert.equal(r.status,403);});
@@ -36,14 +37,15 @@ test('user and captain registration require 8+ chars with uppercase, lowercase a
  const invalid=['Abcdef1','abcdefgh1','ABCDEFGH1','Abcdefgh'];
  for(const [index,password] of invalid.entries())assert.equal((await call('user','/api/user/register','POST',{name:'اختبار',email:`weak-${index}@example.test`,password})).status,400);
  assert.equal((await call('user','/api/user/register','POST',{name:'ثمانية',email:'eight@example.test',password:'Abcdefg1'})).status,201);
- assert.equal((await call('captain','/api/captain/register','POST',{name:'كابتن',email:'captain-eight@example.test',password:'Zyxwvut9'})).status,201);
+ assert.equal((await call('captain','/api/captain/register','POST',{...captainData('captain-eight@example.test',8),password:'Zyxwvut9',confirmPassword:'Zyxwvut9'})).status,201);
 });
 test('independent sessions, shared API, captain approval and order transitions',async()=>{
  const user=await register('user','user@example.test'),otherUser=await register('user','other@example.test'),captain=await register('captain','captain@example.test');
  assert.equal((await call('admin','/api/admin/me','GET',undefined,user.cookie.replace('transport_user_session','transport_admin_session'))).status,401);
  assert.equal((await call('captain','/api/captain/orders','GET',undefined,captain.cookie)).status,403);
  const admin=await call('admin','/api/admin/login','POST',{email:'admin@example.test',password});assert.equal(admin.status,200);
- assert.equal((await call('admin',`/api/admin/captains/${captain.data.id}`,'PATCH',{approved:true},admin.cookie)).status,200);
+ assert.equal((await call('admin',`/api/admin/captain-applications/${captain.data.id}/decision`,'POST',{decision:'approved',revision:1,categories:['light','heavy']},admin.cookie)).status,200);
+ assert.equal((await call('captain','/api/captain/availability','POST',{online:true},captain.cookie)).status,200);
  const created=await call('user','/api/user/orders','POST',{serviceId:'dyna',distanceKm:8,pickup:'نقطة اختبار',destination:'وجهة اختبار',unaccompanied:true,price:1,category:'home'},user.cookie);assert.equal(created.status,201);assert.equal(created.data.price,138);assert.equal(created.data.category,'heavy');const id=created.data.id;
  assert.equal((await call('user','/api/user/orders','GET',undefined,otherUser.cookie)).data.length,0);
  assert.equal((await call('captain','/api/captain/orders','GET',undefined,captain.cookie)).data[0].id,id);
