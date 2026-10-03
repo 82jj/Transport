@@ -1,0 +1,54 @@
+name: Assemble tested maps integration
+on:
+  push:
+    branches: [feat/live-maps]
+    paths: [.github/workflows/maps-assemble.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == '82jj/Transport' && github.ref == 'refs/heads/feat/live-maps'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Apply exact hash-checked source delta
+        run: |
+          python3 - <<'PY'
+          import json,hashlib,pathlib
+          digest=lambda s:hashlib.sha256(s.encode()).hexdigest()
+          data=json.loads(pathlib.Path('.maps-staging/changes.json').read_text())
+          for entry in data:
+            path=pathlib.Path(entry['path'])
+            assert str(path).startswith(('apps/api/','apps/user/','apps/captain/','tests/')) and '..' not in path.parts
+            old=path.read_text(); assert digest(old)==entry['before'],f'base changed: {path}'
+            new=old;end=len(old)
+            for i,j,text in reversed(entry['ops']):
+              assert 0<=i<=j<=end
+              new=new[:i]+text+new[j:];end=i
+            assert digest(new)==entry['after'],f'output mismatch: {path}'
+            path.write_text(new)
+          pathlib.Path('apps/captain/public/maps.css').write_bytes(pathlib.Path('apps/user/public/maps.css').read_bytes())
+          PY
+          npm run check
+          npm test
+          python3 -m py_compile apps/maps/*.py tests/maps_browser_support.py tests/onboarding-browser.py tests/concept-five-browser.py
+      - name: Commit only on the unchanged feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED: ${{ github.sha }}
+        run: |
+          test "$(git ls-remote origin refs/heads/feat/live-maps | cut -f1)" = "$EXPECTED"
+          git config user.name '82jj'
+          git config user.email '97106800+82jj@users.noreply.github.com'
+          git add apps/api apps/user apps/captain tests
+          git restore --staged -- 'tests/__pycache__' || true
+          git commit -m 'feat: integrate real maps, road selection and permission-scoped captain GPS'
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" push origin HEAD:refs/heads/feat/live-maps
