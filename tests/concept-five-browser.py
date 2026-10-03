@@ -84,7 +84,12 @@ try:
    for width in [320,390,430,1024]:
     ctx=browser.new_context(viewport={'width':width,'height':844},device_scale_factor=1)
     page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-    fixture(page,'user');page.goto('http://127.0.0.1:3211/');expect(page.locator('.category-card')).to_have_count(3);no_overflow(page)
+    fixture(page,'user');page.goto('http://127.0.0.1:3211/');expect(page.locator('.category-card')).to_have_count(3)
+    images=page.locator('.category-card img.service-art')
+    expect(images).to_have_count(3)
+    assert images.evaluate_all('(items)=>items.map(image=>image.getAttribute("src"))')==['/pickup-side.webp','/flatbed-side.webp','/water-tanker-side.webp']
+    page.wait_for_function('() => [...document.querySelectorAll(".category-card img.service-art")].every(image => image.complete && image.naturalWidth > 0)')
+    no_overflow(page)
     assert 'ثلاث واجهات' not in page.inner_text('body')
     if width==390:page.screenshot(path=str(OUT/f'{engine}-user-home.png'),full_page=True)
     assert not errors,errors;ctx.close()
