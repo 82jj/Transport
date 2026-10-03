@@ -2,6 +2,9 @@
 import re, sqlite3, sys, unicodedata
 import osmium
 
+SCHEMA="""PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;
+CREATE TABLE places(id INTEGER PRIMARY KEY,osm_id TEXT,label TEXT,names TEXT,lat REAL,lng REAL,rank INTEGER);
+CREATE VIRTUAL TABLE place_search USING fts5(names,content='places',content_rowid='id',tokenize='unicode61',prefix='2 3 4');"""
 def normalize(s):
     return re.sub(r'[^\w\s]', ' ', ''.join(c for c in unicodedata.normalize('NFKD', s.lower()) if not unicodedata.combining(c))).translate(str.maketrans('أإآىة', 'ااايه'))
 
@@ -27,9 +30,7 @@ class Places(osmium.SimpleHandler):
         if nodes: self.add(w,sum(n.lat for n in nodes)/len(nodes),sum(n.lon for n in nodes)/len(nodes),'w')
 
 if __name__=='__main__':
-    db=sqlite3.connect(sys.argv[2]);db.executescript('''PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF;
-    CREATE TABLE places(id INTEGER PRIMARY KEY,osm_id TEXT,label TEXT,names TEXT,lat REAL,lng REAL,rank INTEGER);
-    CREATE VIRTUAL TABLE names USING fts5(names,content=places,content_rowid=id,tokenize='unicode61',prefix='2 3 4');''')
+    db=sqlite3.connect(sys.argv[2]);db.executescript(SCHEMA)
     handler=Places(db);handler.apply_file(sys.argv[1],locations=True,idx='flex_mem')
-    db.execute("INSERT INTO names(names) VALUES('rebuild')");db.commit();db.execute('VACUUM');db.close()
+    db.execute("INSERT INTO place_search(place_search) VALUES('rebuild')");db.commit();db.execute('VACUUM');db.close()
     print(f'Indexed {handler.count} named places/roads from OSM',flush=True)

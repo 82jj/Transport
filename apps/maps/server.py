@@ -14,7 +14,7 @@ def search(q):
     if not tokens: return []
     query=' AND '.join('"'+t.replace('"','""')+'"*' for t in tokens)
     with sqlite3.connect('file:'+DATA+'?mode=ro',uri=True) as db:
-        rows=db.execute('SELECT p.osm_id,p.label,p.lat,p.lng FROM names JOIN places p ON p.id=names.rowid WHERE names MATCH ? ORDER BY p.rank DESC,bm25(names) LIMIT 8',(query,)).fetchall()
+        rows=db.execute('SELECT p.osm_id,p.label,p.lat,p.lng FROM place_search JOIN places p ON p.id=place_search.rowid WHERE place_search MATCH ? ORDER BY p.rank DESC,bm25(place_search) LIMIT 8',(query,)).fetchall()
     return [{'id':r[0],'label':r[1],'lat':r[2],'lng':r[3]} for r in rows]
 def point(params,prefix=''):
     lat=float(params[prefix+'lat'][0]);lng=float(params[prefix+'lng'][0])

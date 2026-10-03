@@ -1,12 +1,13 @@
 name: Private maps engine
 on:
-  push:
-    branches: [feat/live-maps, main]
-    paths: ['apps/maps/**', '.github/workflows/maps-engine.yml']
   pull_request:
-    paths: ['apps/maps/**', '.github/workflows/maps-engine.yml']
+    paths: ['apps/maps/**', 'tests/maps-search.py', '.github/workflows/maps-engine.yml']
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: maps-engine-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   maps-engine:
     runs-on: ubuntu-latest
@@ -15,6 +16,8 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
+      - name: Validate actual search schema and query before regional download
+        run: python3 tests/maps-search.py
       - name: Build self-hosted road and place index
         run: docker build --progress=plain -t wasil-maps:test apps/maps
       - name: Probe routing and Arabic name search
