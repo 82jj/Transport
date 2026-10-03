@@ -32,6 +32,12 @@ for(const role of ['user','captain','admin']){
  test(`${role}: unauthenticated private reads and cross-origin writes blocked`,async()=>{assert.equal((await call(role,`/api/${role}/orders`)).status,401);const r=await call(role,'/api/quote','POST',{serviceId:'dyna',distanceKm:8},null,{Origin:'https://foreign.example'});assert.equal(r.status,403);});
 }
 test('API serves JSON only, validates prices and blocks public administrator creation',async()=>{for(const path of ['/','/index.html','/admin.js','/user.html'])assert.equal((await fetch(paths.api+path)).status,404);for(const distanceKm of [-1,0,2501,'8',null])assert.equal((await call('user','/api/quote','POST',{serviceId:'dyna',distanceKm})).status,400);const catalog=await call('user','/api/services');assert.equal(catalog.data.home.length,5);assert.equal(catalog.data.heavy.some(s=>s.id.startsWith('water')),false);assert.equal((await call('admin','/api/admin/register','POST',{name:'x',email:'x@example.test',password})).status,403);});
+test('user and captain registration require 8+ chars with uppercase, lowercase and a digit',async()=>{
+ const invalid=['Abcdef1','abcdefgh1','ABCDEFGH1','Abcdefgh'];
+ for(const [index,password] of invalid.entries())assert.equal((await call('user','/api/user/register','POST',{name:'اختبار',email:`weak-${index}@example.test`,password})).status,400);
+ assert.equal((await call('user','/api/user/register','POST',{name:'ثمانية',email:'eight@example.test',password:'Abcdefg1'})).status,201);
+ assert.equal((await call('captain','/api/captain/register','POST',{name:'كابتن',email:'captain-eight@example.test',password:'Zyxwvut9'})).status,201);
+});
 test('independent sessions, shared API, captain approval and order transitions',async()=>{
  const user=await register('user','user@example.test'),otherUser=await register('user','other@example.test'),captain=await register('captain','captain@example.test');
  assert.equal((await call('admin','/api/admin/me','GET',undefined,user.cookie.replace('transport_user_session','transport_admin_session'))).status,401);
