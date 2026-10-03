@@ -19,6 +19,7 @@ const allServices=Object.entries(catalog).flatMap(([category,items])=>items.map(
 const digest=s=>createHash('sha256').update(s).digest('hex');
 const passwordHash=password=>{const salt=randomBytes(16).toString('hex');return salt+':'+scryptSync(password,salt,64).toString('hex');};
 const passwordMatches=(password,hash)=>{const [salt,value]=hash.split(':');return timingSafeEqual(scryptSync(password,salt,64),Buffer.from(value,'hex'));};
+const validAccountPassword=password=>password.length>=8&&/[A-Z]/.test(password)&&/[a-z]/.test(password)&&/[0-9]/.test(password);
 if(process.env.ADMIN_EMAIL || process.env.ADMIN_PASSWORD){
  if(!process.env.ADMIN_EMAIL || (process.env.ADMIN_PASSWORD || '').length<16) throw new Error('ADMIN_EMAIL and a strong ADMIN_PASSWORD are required together');
  const email=process.env.ADMIN_EMAIL.trim().toLowerCase();
@@ -53,7 +54,7 @@ const server=http.createServer(async(req,res)=>{
   const [,role,action]=route;
   if(action==='register' && method==='POST'){
    if(role==='admin')fail(403,'إنشاء حساب الإدارة من إعدادات الخادم فقط');limit(req);
-   const name=text(b.name,80),email=text(b.email,160).toLowerCase(),password=text(b.password,128);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||password.length<12)fail(400,'أدخل بريداً صحيحاً وكلمة مرور من 12 حرفاً على الأقل');
+   const name=text(b.name,80),email=text(b.email,160).toLowerCase(),password=text(b.password,128);if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))fail(400,'أدخل بريداً إلكترونياً صحيحاً');if(!validAccountPassword(password))fail(400,'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على حرف كبير وحرف صغير ورقم');
    if(db.prepare('SELECT id FROM users WHERE role=? AND email=?').get(role,email))fail(409,'الحساب موجود بالفعل');
    const id=randomUUID();db.prepare('INSERT INTO users VALUES(?,?,?,?,?,?)').run(id,role,email,name,passwordHash(password),role==='user'?1:0);
    return send(res,201,{ok:true,pendingApproval:role==='captain'});
