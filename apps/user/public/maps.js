@@ -4,26 +4,30 @@ export async function mapConfig(api){if(!configPromise)configPromise=api('/api/m
 export function loadLeaflet(){
  if(window.L)return Promise.resolve(window.L);
  if(!library)library=new Promise((resolve,reject)=>{
-  const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';css.integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';css.crossOrigin='anonymous';document.head.append(css);
-  const script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';script.crossOrigin='anonymous';script.onload=()=>resolve(window.L);script.onerror=()=>{script.remove();css.remove();library=null;reject(new Error('تعذر تحميل الخريطة. تحقق من الإنترنت ثم أعد المحاولة.'));};document.head.append(script);
+  let cssReady=false,jsReady=false;const done=()=>{if(cssReady&&jsReady)resolve(window.L);};
+  const fail=()=>{script.remove();css.remove();library=null;reject(new Error('تعذر تحميل الخريطة. تحقق من الإنترنت ثم أعد المحاولة.'));};
+  const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';css.integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';css.crossOrigin='anonymous';css.onload=()=>{cssReady=true;done();};css.onerror=fail;
+  const script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';script.crossOrigin='anonymous';script.onload=()=>{jsReady=true;done();};script.onerror=fail;document.head.append(css,script);
  });return library;
 }
 const coords=p=>[p.lat,p.lng];
 const textNode=t=>{const s=document.createElement('span');s.textContent=t;return s;};
 export class MapView{
- constructor(element,api,{center,zoom=12}={}){
+ constructor(element,api,{center,zoom=14}={}){
   this.element=element;this.dead=false;this.layers=[];this.fitted=false;
   this.ready=Promise.all([loadLeaflet(),mapConfig(api)]).then(([L,c])=>{
    if(this.dead||!element.isConnected)return;
-   this.L=L;this.config=c;this.map=L.map(element,{zoomControl:true,attributionControl:true,scrollWheelZoom:false}).setView(coords(center||c.center),zoom);
-   L.tileLayer(c.tileUrl,{maxZoom:19,minZoom:4,keepBuffer:1,updateWhenIdle:true,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).on('tileerror',()=>{element.setAttribute('aria-label','تعذر تحميل بعض مربعات الخريطة؛ تحقق من الإنترنت');}).addTo(this.map);
+   this.L=L;this.config=c;this.map=L.map(element,{zoomControl:false,attributionControl:true,scrollWheelZoom:false}).setView(coords(center||c.center),zoom);
+   // Enlarge raster labels with a matching zoom offset, preserving map coordinates.
+   L.control.zoom({position:'bottomleft',zoomInTitle:'تكبير الخريطة',zoomOutTitle:'تصغير الخريطة'}).addTo(this.map);
+   L.tileLayer(c.tileUrl,{tileSize:512,zoomOffset:-1,maxZoom:20,minZoom:5,keepBuffer:1,updateWhenIdle:true,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).on('tileerror',()=>{element.setAttribute('aria-label','تعذر تحميل بعض مربعات الخريطة؛ تحقق من الإنترنت');}).addTo(this.map);
    this.map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
    this.resize=new ResizeObserver(()=>this.map?.invalidateSize({pan:false}));this.resize.observe(element);this.map.invalidateSize();
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
  async draw({pickupPoint,destinationPoint,route,location,stale=false}={}){
   await this.ready;if(this.dead||!this.map)return;const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
-  for(const [p,label,color]of [[pickupPoint,'نقطة الالتقاء','#0875ef'],[destinationPoint,'الوجهة','#173342']])if(p){bounds.push(coords(p));this.layers.push(L.circleMarker(coords(p),{radius:8,color:'#fff',weight:3,fillColor:color,fillOpacity:1}).bindTooltip(textNode(label)).addTo(map));}
+  for(const [p,label]of [[pickupPoint,'نقطة الالتقاء'],[destinationPoint,'الوجهة']])if(p){bounds.push(coords(p));this.layers.push(L.marker(coords(p),{icon:L.divIcon({className:'location-map-marker',html:'<span class="'+(label==='الوجهة'?'destination':'pickup')+'">'+(label==='الوجهة'?'٢':'١')+'</span>',iconSize:[32,40],iconAnchor:[16,40]})}).bindTooltip(textNode(label)).addTo(map));}
   if(route?.geometry?.coordinates?.length){const line=L.polyline(route.geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#0875ef',weight:5,opacity:.85}).addTo(map);this.layers.push(line);bounds.push(...line.getLatLngs());}
   if(location){bounds.push(coords(location));this.layers.push(L.circle(coords(location),{radius:Math.min(location.accuracy||10,500),color:stale?'#8995a3':'#00a787',weight:1,fillOpacity:.1}).addTo(map));this.layers.push(L.marker(coords(location),{icon:L.divIcon({className:'captain-map-marker'+(stale?' stale':''),html:'<span aria-label="موقع الكابتن">🚚</span>',iconSize:[34,34],iconAnchor:[17,17]})}).bindTooltip(textNode(stale?'آخر موقع معروف — متأخر':'موقع الكابتن')).addTo(map));}
   if(bounds.length&&!this.fitted){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
