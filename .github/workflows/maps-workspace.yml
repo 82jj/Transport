@@ -1,0 +1,34 @@
+name: Maps development workspace
+on:
+  push:
+    branches: [feat/live-maps]
+    paths: [.github/workflows/maps-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: |
+          git archive --format=zip HEAD -o source.zip
+          mkdir -p leaflet
+          curl --fail --retry 2 -sSL https://unpkg.com/leaflet@1.9.4/dist/leaflet.js -o leaflet/leaflet.js
+          curl --fail --retry 2 -sSL https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o leaflet/leaflet.css
+          curl --fail --retry 2 -sSL https://unpkg.com/leaflet@1.9.4/LICENSE -o leaflet/LICENSE
+          python3 - <<'PY'
+          import hashlib,base64,pathlib
+          expected={'leaflet.js':'20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=','leaflet.css':'p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY='}
+          for name,digest in expected.items():
+            assert base64.b64encode(hashlib.sha256(pathlib.Path('leaflet',name).read_bytes()).digest()).decode()==digest
+          PY
+          zip -qr leaflet.zip leaflet
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: live-maps-source
+          path: |
+            source.zip
+            leaflet.zip
+          retention-days: 1
