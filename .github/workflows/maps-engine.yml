@@ -20,18 +20,30 @@ jobs:
         run: python3 tests/maps-search.py
       - name: Build self-hosted road and place index
         run: docker build --progress=plain -t wasil-maps:test apps/maps
-      - name: Probe routing and Arabic name search
+      - name: Probe non-root routing and Arabic name search
+        timeout-minutes: 5
         run: |
+          set -euo pipefail
           docker run -d --name maps-test -p 8080:8080 wasil-maps:test
           trap 'docker logs maps-test; docker rm -f maps-test' EXIT
-          for i in $(seq 1 60); do curl --fail -s http://127.0.0.1:8080/healthz && break || sleep 2; done
-          curl --fail -sG --data-urlencode 'q=الرياض' http://127.0.0.1:8080/search > /tmp/map-search.json
-          curl --fail -s 'http://127.0.0.1:8080/route?from_lat=24.7136&from_lng=46.6753&to_lat=24.711&to_lng=46.681' > /tmp/map-route.json
+          test "$(docker inspect -f '{{.Config.User}}' maps-test)" = '65534:65534'
+          ready=0
+          for i in $(seq 1 30); do
+            if curl --fail --connect-timeout 2 --max-time 5 -s http://127.0.0.1:8080/healthz; then ready=1; break; fi
+            test "$(docker inspect -f '{{.State.Running}}' maps-test)" = true || exit 1
+            sleep 2
+          done
+          test "$ready" = 1
+          curl --fail --connect-timeout 2 --max-time 20 -sSG --data-urlencode 'q=الرياض' http://127.0.0.1:8080/search > /tmp/map-search.json
+          curl --fail --connect-timeout 2 --max-time 20 -sS 'http://127.0.0.1:8080/nearest?lat=24.7136&lng=46.6753' > /tmp/map-nearest.json
+          curl --fail --connect-timeout 2 --max-time 20 -sS 'http://127.0.0.1:8080/route?from_lat=24.7136&from_lng=46.6753&to_lat=24.711&to_lng=46.681' > /tmp/map-route.json
           python3 - <<'PY'
           import json
-          s=json.load(open('/tmp/map-search.json'));r=json.load(open('/tmp/map-route.json'))
+          s=json.load(open('/tmp/map-search.json'));r=json.load(open('/tmp/map-route.json'));n=json.load(open('/tmp/map-nearest.json'))
           assert s['results'],s
+          assert n['distanceMeters']<=250 and n['point'],n
           assert r['geometry']['type']=='LineString' and len(r['geometry']['coordinates'])>2,r
           assert r['distanceMeters']>100 and r['durationSeconds']>0,r
-          print('PASS private maps: Arabic names and actual road route, no demo API')
+          assert r['profile']=='car' and r['truckCertified'] is False,r
+          print('PASS private maps: non-root index access, Arabic names, nearest road and actual road route; no demo API')
           PY
