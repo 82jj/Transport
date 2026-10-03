@@ -48,12 +48,14 @@ jobs:
       - name: Exercise the actual interfaces with isolated API fixtures
         env:
           TEST_WEBKIT: '1'
-        run: /tmp/transport-ui-env/bin/python tests/concept-five-browser.py
+        run: |
+          /tmp/transport-ui-env/bin/python tests/concept-five-browser.py
+          /tmp/transport-ui-env/bin/python tests/onboarding-browser.py
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:
           name: concept-five-browser
-          path: artifacts/concept-five
+          path: artifacts
           retention-days: 7
   live-isolation:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
@@ -98,5 +100,5 @@ jobs:
         if: always()
         with:
           name: concept-five-live
-          path: artifacts/concept-five
+          path: artifacts
           retention-days: 7
