@@ -1,0 +1,20 @@
+name: Onboarding workspace
+on:
+  push:
+    branches: [feat/captain-onboarding]
+    paths: [.github/workflows/onboarding-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - run: git archive --format=zip HEAD -o source.zip
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: onboarding-source
+          path: source.zip
+          retention-days: 1
