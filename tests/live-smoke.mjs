@@ -1,3 +1,4 @@
+import {verifyLiveMaps} from './live-maps-smoke.mjs';
 import assert from 'node:assert/strict';
 import {readFile,appendFile} from 'node:fs/promises';
 import {createHash} from 'node:crypto';
@@ -27,8 +28,6 @@ async function verifyApi(){
 }
 async function verify(role){
  const base=hosts[role],h=await request(base+'/healthz');assert.equal(h.status,200);const health=await h.json();assert.equal(health.app,`transport-${role}`);assert.equal(health.version,'0.3.0');
- // Independent apps need not all redeploy for a sibling's CSS change. Check the
- // entire deployed app tree against this revision, not only a global commit ID.
  if(process.env.EXPECTED_SHA&&health.commit!=='local'){
   assert.match(health.commit,/^[a-f0-9]{40}$/);
   git('merge-base','--is-ancestor',health.commit,process.env.EXPECTED_SHA);
@@ -46,4 +45,4 @@ async function verify(role){
  const result=`PASS ${role}: full app tree and ${config.files.length} assets match; foreign pages/APIs 404; authenticated data 401; catalogue reachable.`;console.log(result);return result;
 }
 const deadline=Date.now()+17*60*1000;
-while(true){try{const results=[await verifyApi()];for(const role of roles)results.push(await verify(role));const summary=`## Live application isolation verified\nTarget revision: ${process.env.EXPECTED_SHA||'working tree'}\n\n${results.map(s=>'- '+s).join('\n')}\n\nRead-only checks: no production accounts or orders were created.\n`;if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,summary);console.log('LIVE ISOLATION VERIFIED');break;}catch(error){if(Date.now()>deadline)throw new Error('Live verification failed: '+error.message);console.log('Waiting for the tested deployment: '+error.message);await new Promise(r=>setTimeout(r,15000));}}
+while(true){try{const results=[await verifyApi(),await verifyLiveMaps(apiHost)];for(const role of roles)results.push(await verify(role));const summary=`## Live application isolation verified\nTarget revision: ${process.env.EXPECTED_SHA||'working tree'}\n\n${results.map(s=>'- '+s).join('\n')}\n\nRead-only checks: no production accounts or orders were created.\n`;if(process.env.GITHUB_STEP_SUMMARY)await appendFile(process.env.GITHUB_STEP_SUMMARY,summary);console.log('LIVE ISOLATION VERIFIED');break;}catch(error){if(Date.now()>deadline)throw new Error('Live verification failed: '+error.message);console.log('Waiting for the tested deployment: '+error.message);await new Promise(r=>setTimeout(r,15000));}}

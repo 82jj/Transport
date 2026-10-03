@@ -44,3 +44,8 @@ test('route switches to destination after start and completion removes live loca
  f.db.prepare("UPDATE orders SET status='delivered' WHERE id='o'").run();assert.equal((await f.private('user','u','tracking')).body.location,null);assert.equal(f.db.prepare('SELECT COUNT(*) n FROM order_live_locations').get().n,0);
  await assert.rejects(()=>f.private('captain','c','location-sharing',{},'POST'),{status:403});
 }finally{f.close();}});
+test('captain logout revokes trip sharing and clears the most recent coordinate',async()=>{const f=fixture();try{
+ await f.private('captain','c','location-sharing',{},'POST');await f.private('captain','c','location',{...a,accuracy:10,capturedAt:f.time},'POST');
+ f.maps.clearCaptain('c');assert.equal((await f.private('user','u','tracking')).body.location,null);
+ await assert.rejects(()=>f.private('captain','c','location',{...a,accuracy:10,capturedAt:f.time},'POST'),{status:403});
+}finally{f.close();}});

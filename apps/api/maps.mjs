@@ -61,6 +61,7 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
   return row;
  }
  function clear(id){db.prepare('DELETE FROM order_live_locations WHERE order_id=?').run(id);db.prepare('DELETE FROM order_geo_consent WHERE order_id=?').run(id);}
+ function clearCaptain(id){for(const r of db.prepare('SELECT id FROM orders WHERE captain_id=?').all(id))clear(r.id);}
  function prune(){db.prepare("DELETE FROM order_live_locations WHERE received_at<? OR order_id IN(SELECT id FROM orders WHERE status IN ('delivered','cancelled'))").run(now()-900000);}
  async function handlePrivate(req,res,role,action,user,b){
   const match=action.match(/^orders\/([\w-]+)\/(location|tracking|location-sharing)$/);if(!match)return false;
@@ -93,5 +94,5 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
   send(res,200,{status:row.status,stage,location,stale,serverTime:now(),route:currentRoute,routeError,pickupPoint:data.pickupPoint||null,destinationPoint:data.destinationPoint||null});return true;
  }
  prune();const timer=setInterval(prune,60000);timer.unref();
- return {handlePublic,handlePrivate,geometryQuote,route,clear,stop:()=>clearInterval(timer)};
+ return {handlePublic,handlePrivate,geometryQuote,route,clear,clearCaptain,stop:()=>clearInterval(timer)};
 }

@@ -95,7 +95,9 @@ jobs:
       - name: Render both public apps without production writes
         env:
           TEST_WEBKIT: '1'
-        run: /tmp/transport-ui-env/bin/python tests/concept-five-browser.py --live
+        run: |
+          /tmp/transport-ui-env/bin/python tests/concept-five-browser.py --live
+          /tmp/transport-ui-env/bin/python tests/live-map-browser.py
       - uses: actions/upload-artifact@v7.0.1
         if: always()
         with:

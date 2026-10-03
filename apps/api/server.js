@@ -79,7 +79,7 @@ const server=http.createServer(async(req,res)=>{
   if(await onboarding.handle(req,res,role,action,user,b))return;
   if(role==='admin'&&action==='notification-status'&&method==='GET')return send(res,200,{configured:notificationConfiguration(),states:db.prepare('SELECT channel,state,COUNT(*) AS count FROM notification_outbox GROUP BY channel,state').all()});
   if(action==='me' && method==='GET')return send(res,200,safeUser(user));
-  if(action==='logout' && method==='POST'){if(role==='captain')onboarding.offline(user.id);db.prepare('DELETE FROM sessions WHERE token=?').run(digest(cookieValue(req,role)));return send(res,200,{ok:true},cookie(role,'',0));}
+  if(action==='logout' && method==='POST'){if(role==='captain'){onboarding.offline(user.id);maps.clearCaptain(user.id);}db.prepare('DELETE FROM sessions WHERE token=?').run(digest(cookieValue(req,role)));return send(res,200,{ok:true},cookie(role,'',0));}
   if(role==='user' && action==='orders' && method==='POST'){
    const q=await quote(b),pickup=text(b.pickup),destination=text(b.destination);if(typeof b.unaccompanied!=='boolean')fail(400,'حدد خيار المرافقة');
    const id=randomUUID(),createdAt=new Date().toISOString(),data={...q,price:q.total,pickup,destination,unaccompanied:b.unaccompanied};

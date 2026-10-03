@@ -53,8 +53,10 @@ with tempfile.TemporaryDirectory(prefix='wasil-browser-') as data:
     for path,payload in [('register',{'name':'مستخدم اختبار','email':f'user{n}@example.test','password':'SecurePass1'}),('login',{'email':f'user{n}@example.test','password':'SecurePass1'})]:assert uc.request.post(hosts['user']+'/api/user/'+path,data=payload).ok
     foreground(up);up.goto(hosts['user']);up.get_by_role('button',name='طلباتي',exact=True).click();up.get_by_role('button',name='طلب مشوار جديد',exact=True).click();expect(up.locator('#request-form')).to_be_visible();choose_point(up,'pickup','نقطة اختبار');choose_point(up,'destination','وجهة اختبار');up.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();up.locator('#confirm-order').click();expect(up.locator('[data-screen=track]')).to_be_visible()
     heavy=uc.request.post(hosts['user']+'/api/user/orders',data={'serviceId':'dyna','pickup':'أ','destination':'ب','distanceKm':8,'unaccompanied':False}).json()
-    # WebKit legitimately pauses geolocation on hidden tabs; simulate the foreground captain app.
-    foreground(cp);cp.locator('#refresh').click();expect(cp.locator('[data-order]')).to_have_count(1);cp.locator('[data-order]').click();expect(cp.locator('[data-screen=offer]')).to_be_visible();cp.locator('#accept-order').click();expect(cp.locator('[data-screen=trip]')).to_be_visible()
+    # Foreground and refresh the sensor mock after onboarding. WebKit correctly retains
+    # the timestamp from set_geolocation, so the old onboarding fix must not be reused
+    # after per-trip consent. Do not rewrite timestamps or weaken API freshness checks.
+    foreground(cp);cp.locator('#refresh').click();expect(cp.locator('[data-order]')).to_have_count(1);cp.locator('[data-order]').click();expect(cp.locator('[data-screen=offer]')).to_be_visible();cc.set_geolocation({'latitude':24.7136,'longitude':46.6753,'accuracy':10});cp.locator('#accept-order').click();expect(cp.locator('[data-screen=trip]')).to_be_visible()
     response=cc.request.post(hosts['captain']+f"/api/captain/orders/{heavy['id']}/accept",data={});assert response.status==403
     trip=next(o for o in uc.request.get(hosts['user']+'/api/user/orders').json() if o['serviceId']=='pickup-s')
     tracking=hosts['user']+f"/api/user/orders/{trip['id']}/tracking"
