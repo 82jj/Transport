@@ -1,0 +1,34 @@
+name: Private maps engine
+on:
+  push:
+    branches: [feat/live-maps, main]
+    paths: ['apps/maps/**', '.github/workflows/maps-engine.yml']
+  pull_request:
+    paths: ['apps/maps/**', '.github/workflows/maps-engine.yml']
+permissions:
+  contents: read
+jobs:
+  maps-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build self-hosted road and place index
+        run: docker build --progress=plain -t wasil-maps:test apps/maps
+      - name: Probe routing and Arabic name search
+        run: |
+          docker run -d --name maps-test -p 8080:8080 wasil-maps:test
+          trap 'docker logs maps-test; docker rm -f maps-test' EXIT
+          for i in $(seq 1 60); do curl --fail -s http://127.0.0.1:8080/healthz && break || sleep 2; done
+          curl --fail -sG --data-urlencode 'q=الرياض' http://127.0.0.1:8080/search > /tmp/map-search.json
+          curl --fail -s 'http://127.0.0.1:8080/route?from_lat=24.7136&from_lng=46.6753&to_lat=24.711&to_lng=46.681' > /tmp/map-route.json
+          python3 - <<'PY'
+          import json
+          s=json.load(open('/tmp/map-search.json'));r=json.load(open('/tmp/map-route.json'))
+          assert s['results'],s
+          assert r['geometry']['type']=='LineString' and len(r['geometry']['coordinates'])>2,r
+          assert r['distanceMeters']>100 and r['durationSeconds']>0,r
+          print('PASS private maps: Arabic names and actual road route, no demo API')
+          PY
