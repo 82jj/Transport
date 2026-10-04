@@ -24,8 +24,8 @@ with sync_playwright() as p:
    # Real map tiles, with the native tile scale and a single confirmation.
    page.wait_for_function("() => [...document.querySelectorAll('#picker-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
    page.locator('#edit-place').click()
-   page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('.place-result').first).to_be_visible(timeout=30000)
-   page.locator('.place-result').first.click()
+   page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('#place-results .place-result').first).to_be_visible(timeout=30000)
+   page.locator('#place-results .place-result').first.click()
    expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000);page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
   expect(page.locator('#request-map.leaflet-container')).to_be_visible(timeout=30000)
   page.wait_for_function("() => [...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)

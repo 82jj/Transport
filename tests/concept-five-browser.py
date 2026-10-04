@@ -107,7 +107,13 @@ try:
    # The destination is directly editable; search results select a real map point.
    expect(page.locator('#destination')).to_be_editable()
    page.locator('#destination').fill('عنوان الاختبار');expect(page.locator('#destination-results .place-result')).to_have_count(1)
-   page.locator('#destination').press('ArrowDown');page.locator('#destination').press('Enter')
+   st['hold_snap']=True;page.locator('#destination').press('ArrowDown');page.locator('#destination').press('Enter')
+   for _ in range(100):
+    if st['pending_snap']:break
+    page.wait_for_timeout(20)
+   assert st['pending_snap'];page.locator('#pickup').fill('بحث أثناء الحفظ')
+   st['hold_snap']=False;st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'شارع','distanceMeters':10}))
+   expect(page.locator('#pickup')).to_have_value('بحث أثناء الحفظ');expect(page.locator('#pickup-results .place-result')).to_contain_text('بحث أثناء الحفظ')
    expect(page.locator('#destination-results')).not_to_be_visible();expect(page.locator('.map-picker')).to_have_count(0)
    expect(page.locator('#destination')).to_have_value('عنوان الاختبار');expect(page.locator('.service-step')).not_to_be_visible()
    choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');page.locator('#alone').check()
