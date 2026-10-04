@@ -46,7 +46,8 @@ export class GoogleMapView{
   for(const [p,label,kind]of [[pickupPoint,'نقطة الالتقاء','pickup'],[destinationPoint,'الوجهة','destination']])if(p){this.marker(p,label,kind);bounds.extend(p);count++;}
   if(route?.geometry?.coordinates?.length){const path=route.geometry.coordinates.map(([lng,lat])=>({lat,lng}));const line=new G.Polyline({map:native,path,strokeColor:'#0875ef',strokeWeight:5,strokeOpacity:.9});this.layers.push(line);path.forEach(p=>bounds.extend(p));count+=path.length;}
   if(location){const color=stale?'#8995a3':'#00a787';this.layers.push(new G.Circle({map:native,center:location,radius:Math.min(location.accuracy||10,500),strokeColor:color,strokeWeight:1,fillColor:color,fillOpacity:.15}));this.marker(location,stale?'آخر موقع معروف — متأخر':'موقع الكابتن',stale?'captain stale':'captain');bounds.extend(location);count++;}
-  if(count&&!this.fitted){native.fitBounds(bounds,28);this.listeners.push(G.event.addListenerOnce(native,'idle',()=>{if(native.getZoom()>16)native.setZoom(16);}));this.fitted=true;}
+  const hasRoute=!!route?.geometry?.coordinates?.length;
+  if(count&&(!this.fitted||hasRoute&&!this.fittedRoute)){native.fitBounds(bounds,28);this.listeners.push(G.event.addListenerOnce(native,'idle',()=>{if(native.getZoom()>16)native.setZoom(16);}));this.fitted=true;this.fittedRoute=hasRoute;}
  }
  destroy(){if(!this.native)return;this.cancelLoad();this.layers.forEach(x=>x.setMap(null));this.listeners.forEach(x=>x.remove());this.G.event.clearInstanceListeners(this.native);this.native=null;}
 }
