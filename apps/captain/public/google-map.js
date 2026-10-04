@@ -8,7 +8,9 @@ export function loadGoogleMaps(key){
   window.gm_authFailure=()=>{document.dispatchEvent(new Event('wasil-google-auth-failure'));fail();};
   const timer=setTimeout(fail,20000);
   script.src='https://maps.googleapis.com/maps/api/js?'+new URLSearchParams({key,v:'quarterly',loading:'async',callback:'wasilGoogleReady',language:'ar',region:'SA'});
-  script.async=true;script.nonce=document.querySelector('script[nonce]')?.nonce||'';script.onerror=fail;document.head.append(script);
+  const nonce=document.querySelector('script[nonce]')?.nonce||'';
+  if(nonce&&!document.querySelector('style[nonce]')){const style=document.createElement('style');style.setAttribute('nonce',nonce);document.head.append(style);}
+  script.async=true;script.setAttribute('nonce',nonce);script.onerror=fail;document.head.append(script);
  });return library;
 }
 const meters=(a,b)=>{const rad=x=>x*Math.PI/180,dlat=rad(b[0]-a[0]),dlng=rad(b[1]-a[1]);const v=Math.sin(dlat/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dlng/2)**2;return 6371000*2*Math.atan2(Math.sqrt(v),Math.sqrt(Math.max(0,1-v)));};
@@ -44,7 +46,8 @@ export class GoogleMapView{
   for(const [p,label,kind]of [[pickupPoint,'نقطة الالتقاء','pickup'],[destinationPoint,'الوجهة','destination']])if(p){this.marker(p,label,kind);bounds.extend(p);count++;}
   if(route?.geometry?.coordinates?.length){const path=route.geometry.coordinates.map(([lng,lat])=>({lat,lng}));const line=new G.Polyline({map:native,path,strokeColor:'#0875ef',strokeWeight:5,strokeOpacity:.9});this.layers.push(line);path.forEach(p=>bounds.extend(p));count+=path.length;}
   if(location){const color=stale?'#8995a3':'#00a787';this.layers.push(new G.Circle({map:native,center:location,radius:Math.min(location.accuracy||10,500),strokeColor:color,strokeWeight:1,fillColor:color,fillOpacity:.15}));this.marker(location,stale?'آخر موقع معروف — متأخر':'موقع الكابتن',stale?'captain stale':'captain');bounds.extend(location);count++;}
-  if(count&&!this.fitted){native.fitBounds(bounds,28);this.listeners.push(G.event.addListenerOnce(native,'idle',()=>{if(native.getZoom()>16)native.setZoom(16);}));this.fitted=true;}
+  const hasRoute=!!route?.geometry?.coordinates?.length;
+  if(count&&(!this.fitted||hasRoute&&!this.fittedRoute)){native.fitBounds(bounds,28);this.listeners.push(G.event.addListenerOnce(native,'idle',()=>{if(native.getZoom()>16)native.setZoom(16);}));this.fitted=true;this.fittedRoute=hasRoute;}
  }
  destroy(){if(!this.native)return;this.cancelLoad();this.layers.forEach(x=>x.setMap(null));this.listeners.forEach(x=>x.remove());this.G.event.clearInstanceListeners(this.native);this.native=null;}
 }

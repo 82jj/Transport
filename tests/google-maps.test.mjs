@@ -9,6 +9,7 @@ function setup(extra={}){
   if(u.pathname.endsWith(':autocomplete'))data={suggestions:[{placePrediction:{placeId:'test-place',text:{text:'مكان اختبار، الرياض'}}}]};
   else if(u.pathname==='/v1/places/test-place')data={location:{latitude:a.lat,longitude:a.lng},formattedAddress:'عنوان اختبار'};
   else if(u.pathname.endsWith('/geocode/json'))data={status:'OK',results:[{formatted_address:'شارع الاختبار',geometry:{location:{lat:24.9,lng:46.9}}}]};
+  else if(u.pathname.startsWith('/v4/geocode/location/'))data={results:[{formattedAddress:'عنوان تجريبي، الرياض',location:{latitude:24.9,longitude:46.9}}]};
   else if(u.pathname.endsWith(':computeRoutes'))data={routes:[{distanceMeters:8200,duration:'600s',polyline:{geoJsonLinestring:{type:'LineString',coordinates:[[a.lng,a.lat],[46.69,24.72],[b.lng,b.lat]]}}}]};
   else throw new Error('Unexpected endpoint');
   return {ok:true,status:200,json:async()=>data};
@@ -40,4 +41,22 @@ test('Google reverse lookup preserves the chosen entrance and Routes computes qu
 test('Google upstream failures do not leak credentials or silently switch providers',async()=>{
  const f=setup({fetcher:async()=>({ok:false,status:403,json:async()=>({error:{message:serverKey}})})});try{await assert.rejects(()=>f.call('search',{query:'الرياض',sessionToken:token}),e=>e.status===503&&!e.message.includes(serverKey));}finally{f.close();}
  const malformed=setup({fetcher:async()=>({ok:true,status:200,json:async()=>({routes:[{distanceMeters:5,duration:'no-duration',polyline:{geoJsonLinestring:{type:'LineString',coordinates:[[46,24],[47,25]]}}}]})})});try{await assert.rejects(()=>malformed.maps.route(a,b),{status:502});}finally{malformed.close();}
+});
+test('Explicit Google demo mode uses only the public demo key and v4 lookup, preserving the selected point',async()=>{
+ for(const server of [serverKey,browserKey,'']){
+  const f=setup({env:{MAPS_PROVIDER:'google-demo',GOOGLE_MAPS_API_KEY:server}});try{
+   const config=await f.call('config',{},'GET');assert.equal(config.body.demo,true);assert.equal(config.body.browserKey,browserKey);assert.equal(JSON.stringify(config).includes(serverKey),false);
+   await f.call('search',{query:'الرياض',sessionToken:token});await f.call('snap',{placeId:'test-place',sessionToken:token});
+   const resolved=await f.call('snap',{point:a});assert.deepEqual(resolved.body.point,a);assert.equal(resolved.body.road,'عنوان تجريبي، الرياض');assert.equal(resolved.body.distanceMeters,0);
+   await f.maps.geometryQuote({pickupPoint:a,destinationPoint:b});
+   assert.ok(f.calls.every(c=>c.options.headers['X-Goog-Api-Key']===browserKey&&!c.url.includes(serverKey)));
+   const lookup=f.calls[2];assert.equal(new URL(lookup.url).host,'geocode.googleapis.com');assert.equal(new URL(lookup.url).pathname,`/v4/geocode/location/${a.lat},${a.lng}`);assert.equal(new URL(lookup.url).searchParams.get('languageCode'),'ar');assert.equal(lookup.options.headers['X-Goog-FieldMask'],'results.formattedAddress');
+  }finally{f.close();}
+ }
+ assert.throws(()=>setup({env:{MAPS_PROVIDER:'google-demo',GOOGLE_MAPS_BROWSER_KEY:''}}),/configured public demo key/);
+});
+test('Google demo quota errors are clear, sanitized, and never fall back to another provider',async()=>{
+ const f=setup({env:{MAPS_PROVIDER:'google-demo'},fetcher:async()=>({ok:false,status:429,json:async()=>({error:{message:serverKey,code:429}})})});try{
+  await assert.rejects(()=>f.call('search',{query:'الرياض',sessionToken:token}),e=>e.status===429&&e.message.includes('حد الاستخدام')&&!e.message.includes(serverKey));
+ }finally{f.close();}
 });

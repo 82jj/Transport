@@ -33,7 +33,7 @@ def fixture(page, role, logged=False, approved=True, orders=None, google=False, 
   method=req.method
   if method!='GET':state['writes'].append((path,method,req.post_data_json))
   status=200; result={}
-  if path=='maps/config':result={'provider':'Google' if google else 'OpenStreetMap','browserKey':'browser-test-key','enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
+  if path=='maps/config':result={'provider':'Google' if google else 'OpenStreetMap','demo':bool(google),'browserKey':'browser-test-key','enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
   elif path=='maps/search':
    query=req.post_data_json['query']
    if query=='بحث متأخر':state['pending_search']=route;return
@@ -182,12 +182,14 @@ try:
    ctx.close();check(engine+': GPS pickup confirmed once, snap error retry, cancelled pending lookup cannot change draft')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user',google=True);sdk=[];page.on('request',lambda r:sdk.append(r.url) if r.url.startswith('https://maps.googleapis.com/maps/api/js?') else None)
-   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click()
+   page.goto('http://127.0.0.1:3211/');expect(page.locator('[data-map-provider-label]')).to_have_text('Google (تجريبي)');page.locator('[data-category=light]').click()
    page.locator('#pickup').fill('مكان من Google');expect(page.locator('#pickup-results .maps-attribution')).to_have_text('Google Maps')
    page.locator('#pickup-results .place-result').click();expect(page.locator('#pickup-results')).not_to_be_visible()
    choose_point(page,'destination','وجهة Google')
    expect(page.locator('#request-map')).to_have_attribute('data-map-provider','Google');expect(page.locator('#request-map')).to_have_attribute('data-map-ready','true');expect(page.locator('.service-step')).to_be_visible()
    assert len(sdk)==1;assert 'language=ar' in sdk[0];assert 'region=SA' in sdk[0]
+   assert page.evaluate("document.querySelector('style[nonce]').nonce===document.querySelector('script[nonce]').nonce")
+   expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة');expect(page.locator('#request-map')).to_have_attribute('data-map-fit-points','4')
    selections=[body for path,method,body in st['writes'] if path=='maps/snap' and 'placeId' in body];assert len(selections)==2;assert all('sessionToken' in body and 'point' not in body for body in selections)
    page.locator('#select-pickup').click();expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('.map-picker .close').click();expect(page.locator('#pickup')).to_have_value('مكان من Google')
    assert not errors,errors;ctx.close();check(engine+': Google SDK contract fixture: Arabic loader once, place ID resolution, attribution, one-confirm map and preserved draft (not real Google imagery)')

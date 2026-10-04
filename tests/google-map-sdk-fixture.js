@@ -13,7 +13,7 @@
   setCenter(p){this.center=p instanceof LatLng?{lat:p.lat(),lng:p.lng()}:p;queueMicrotask(()=>this.emit('idle'));}
   getZoom(){return this.zoom;}
   setZoom(z){this.zoom=z;queueMicrotask(()=>this.emit('idle'));}
-  fitBounds(bounds){if(bounds.points.length)this.setCenter(bounds.points[0]);}
+  fitBounds(bounds){this.element.dataset.mapFitPoints=String(bounds.points.length);if(bounds.points.length)this.setCenter(bounds.points[0]);}
  }
  class Overlay{
   setMap(map){if(this.map)this.onRemove();this.map=map;if(map){this.onAdd();this.draw();}}
