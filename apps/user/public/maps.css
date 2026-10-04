@@ -58,3 +58,5 @@
 .map-picker #place-results{max-height:none;overflow:auto;margin:0 18px;border:0;border-radius:0}
 .map-picker .place-result{padding:17px 8px;min-height:72px}
 .map-picker .picker-map-return{margin:8px 18px;padding:16px 8px;text-align:right;border:0;border-top:1px solid #e6e9eb;background:white;color:#172b3b;font-size:15px}
+
+.google-location-marker{position:absolute;transform:translate(-50%,-100%);display:grid;place-items:center;width:32px;height:36px;background:#182b3b;border:3px solid #fff;border-radius:18px 18px 18px 2px;color:#fff;font:700 15px sans-serif;box-shadow:0 2px 5px #0004;pointer-events:none}.google-location-marker.destination{border-radius:7px}.google-location-marker.captain{background:#00a787;border-radius:50%;height:32px}.google-location-marker.stale{background:#8995a3}.maps-attribution{display:block;direction:ltr;text-align:right;padding:10px 10px 5px;font:400 12px sans-serif;letter-spacing:normal;white-space:nowrap;color:#5e5e5e}

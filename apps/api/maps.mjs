@@ -1,4 +1,5 @@
-// Live maps use our private router; never forward personal locations to a public demo API.
+import {createGoogleMaps} from './google-maps.mjs';
+// Explicit provider selection; no public demo router and no silent cross-provider fallback.
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
 export const activeOrder=row=>!['delivered','cancelled'].includes(row.status);
 export function validPoint(value){
@@ -7,6 +8,9 @@ export function validPoint(value){
 }
 export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,now=Date.now}){
  const origin=env.MAPS_ORIGIN;
+ const provider=env.MAPS_PROVIDER||'osm';
+ if(!['osm','google'].includes(provider))throw new Error('Invalid MAPS_PROVIDER');
+ const google=provider==='google'?createGoogleMaps({env,fetcher,validPoint}):null;
  if(origin&&!/^https?:$/.test(new URL(origin).protocol))throw new Error('Invalid MAPS_ORIGIN');
  db.exec('CREATE TABLE IF NOT EXISTS order_live_locations(order_id TEXT PRIMARY KEY REFERENCES orders(id),captain_id TEXT NOT NULL REFERENCES users(id),payload BLOB NOT NULL,captured_at INTEGER NOT NULL,received_at INTEGER NOT NULL);');
  db.exec('CREATE TABLE IF NOT EXISTS order_geo_consent(order_id TEXT PRIMARY KEY REFERENCES orders(id),started_at INTEGER NOT NULL);');
@@ -26,11 +30,11 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
  function rate(req){const key=req.socket.remoteAddress||'proxy',t=now();let entry=limits.get(key);if(!entry||entry.until<t){entry={count:0,until:t+60000};limits.set(key,entry);}if(++entry.count>120)fail(429,'طلبات خرائط كثيرة. انتظر قليلًا.');for(const [k,v]of limits)if(v.until<t)limits.delete(k);}
  async function route(a,b){
   a=validPoint(a);b=validPoint(b);
-  const data=await upstream('/route?'+new URLSearchParams({from_lat:a.lat,from_lng:a.lng,to_lat:b.lat,to_lng:b.lng}),300000);
+  const data=google?await google.route(a,b):await upstream('/route?'+new URLSearchParams({from_lat:a.lat,from_lng:a.lng,to_lat:b.lat,to_lng:b.lng}),300000);
   if(!Number.isFinite(data.distanceMeters)||data.distanceMeters<0||data.distanceMeters>2500000||!Number.isFinite(data.durationSeconds)||data.durationSeconds<0||data.geometry?.type!=='LineString'||!Array.isArray(data.geometry.coordinates)||data.geometry.coordinates.length<2)fail(502,'استجابة مسار غير صالحة');
   const coordinates=data.geometry.coordinates;if(coordinates.length>50000)fail(422,'المسار طويل جدًا للعرض');
   for(const c of coordinates)if(!Array.isArray(c)||c.length!==2||!Number.isFinite(c[0])||!Number.isFinite(c[1]))fail(502,'إحداثيات مسار غير صالحة');
-  return {distanceMeters:data.distanceMeters,durationSeconds:data.durationSeconds,geometry:data.geometry,waypoints:data.waypoints?.map(validPoint)||[a,b],dataDate:data.dataDate,profile:'car',truckCertified:false};
+  return {distanceMeters:data.distanceMeters,durationSeconds:data.durationSeconds,geometry:data.geometry,waypoints:data.waypoints?.map(validPoint)||[a,b],dataDate:data.dataDate,provider:google?'Google':'OpenStreetMap',profile:'car',truckCertified:false};
  }
  async function geometryQuote(b){
   const pickup=validPoint(b.pickupPoint),destination=validPoint(b.destinationPoint),r=await route(pickup,destination);
@@ -39,15 +43,18 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
  async function handlePublic(req,res,path,b){
   if(!path.startsWith('/api/maps/'))return false;
   if(path==='/api/maps/config'&&req.method==='GET'){
+   if(google){send(res,200,{enabled:true,routingReady:true,searchReady:true,center:{lat:24.7136,lng:46.6753},provider:'Google',browserKey:env.GOOGLE_MAPS_BROWSER_KEY,profile:'car',truckCertified:false,backgroundTracking:false});return true;}
    let ready=false,dataDate=null;try{const h=await upstream('/healthz',30000);ready=!!h.ok;dataDate=h.dataDate;}catch{}
    send(res,200,{enabled:true,routingReady:ready,searchReady:ready,tileUrl:env.MAP_TILE_URL||'https://tile.openstreetmap.org/{z}/{x}/{y}.png',center:{lat:24.7136,lng:46.6753},dataDate,provider:'OpenStreetMap',profile:'car',truckCertified:false,backgroundTracking:false});return true;
   }
   if(req.method!=='POST')fail(405,'طريقة غير مسموحة');rate(req);
   if(path==='/api/maps/search'){
    if(typeof b.query!=='string'||b.query.trim().length<2||b.query.length>120)fail(400,'اكتب اسم مكان أو شارع للبحث');
+   if(google){send(res,200,{results:await google.search(b.query.trim(),b.sessionToken)});return true;}
    const result=await upstream('/search?'+new URLSearchParams({q:b.query.trim()}),600000);send(res,200,{results:(result.results||[]).slice(0,8).map(x=>({id:String(x.id),label:String(x.label).slice(0,300),...validPoint(x)}))});return true;
   }
   if(path==='/api/maps/snap'){
+   if(google){send(res,200,await google.snap(b));return true;}
    const point=validPoint(b.point),result=await upstream('/nearest?'+new URLSearchParams(point),300000);
    if(!Number.isFinite(result.distanceMeters)||result.distanceMeters<0||result.distanceMeters>250)fail(422,'حرّك النقطة إلى شارع قريب يمكن الوصول إليه');
    send(res,200,{point:validPoint(result.point),distanceMeters:result.distanceMeters,road:String(result.road||'').slice(0,200)});return true;
@@ -90,7 +97,10 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
   let currentRoute=null,routeError=null;
   if(location&&!stale&&data.pickupPoint&&data.destinationPoint){
    try{const from={lat:Math.round(location.lat*10000)/10000,lng:Math.round(location.lng*10000)/10000};currentRoute=await route(from,stage==='pickup'?data.pickupPoint:data.destinationPoint);}catch{routeError='تعذر تحديث خط الطريق؛ موقع الكابتن ظاهر دون مسار جديد';}
-  }else if(!row.captain_id||stage==='destination')currentRoute=data.route||null;
+  }else if(!row.captain_id||stage==='destination'){
+   currentRoute=data.route||null;
+   if(google&&!currentRoute&&data.pickupPoint&&data.destinationPoint){try{currentRoute=await route(data.pickupPoint,data.destinationPoint);}catch{routeError='تعذر تحديث خط الطريق';}}
+  }
   send(res,200,{status:row.status,stage,location,stale,serverTime:now(),route:currentRoute,routeError,pickupPoint:data.pickupPoint||null,destinationPoint:data.destinationPoint||null});return true;
  }
  prune();const timer=setInterval(prune,60000);timer.unref();

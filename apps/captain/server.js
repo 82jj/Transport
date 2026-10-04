@@ -1,3 +1,4 @@
+import {randomBytes} from 'node:crypto';
 import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
@@ -8,7 +9,7 @@ const root = new URL('./public/', import.meta.url);
 const upstream = process.env.API_ORIGIN;
 if (process.env.NODE_ENV === 'production' && !upstream) throw new Error('API_ORIGIN is required');
 const types = {'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webmanifest':'application/manifest+json','.svg':'image/svg+xml'};
-const headers = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'geolocation=(self)','Content-Security-Policy':"default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://unpkg.com; img-src 'self' data: blob: https://tile.openstreetmap.org; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
+const headers = {'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','X-Frame-Options':'DENY','Referrer-Policy':'strict-origin-when-cross-origin','Permissions-Policy':'geolocation=(self)','Content-Security-Policy':"default-src 'self'; script-src 'self' 'nonce-WASIL_NONCE' https://unpkg.com https://*.googleapis.com https://*.gstatic.com; style-src 'self' 'nonce-WASIL_NONCE' https://unpkg.com https://fonts.googleapis.com; img-src 'self' data: blob: https://tile.openstreetmap.org https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.gstatic.com https://*.google.com; font-src 'self' https://fonts.gstatic.com; frame-src https://*.google.com; worker-src blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"};
 const json = (res,status,data) => {res.writeHead(status,{...headers,'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));};
 export const server = http.createServer(async (req,res) => {
   try {
@@ -37,9 +38,11 @@ export const server = http.createServer(async (req,res) => {
     if (!['GET','HEAD'].includes(req.method)) return json(res,405,{error:'طريقة غير مسموحة'});
     const path = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);
     if (!config.files.includes(path)) return json(res,404,{error:'المسار غير موجود'});
-    const content=await readFile(new URL(path,root));
+    let content=await readFile(new URL(path,root));
+    const nonce=path==='index.html'?randomBytes(16).toString('base64'):null;
+    if(nonce)content=Buffer.from(content.toString('utf8').replace(/<(script|link)\b/g,`<$1 nonce="${nonce}"`));
     const extension=path.slice(path.lastIndexOf('.'));
-    res.writeHead(200,{...headers,'Content-Type':types[extension] || 'application/octet-stream'});
+    res.writeHead(200,{...headers,...(nonce?{'Content-Security-Policy':headers['Content-Security-Policy'].replaceAll('WASIL_NONCE',nonce)}:{}),'Content-Type':types[extension] || 'application/octet-stream'});
     res.end(req.method==='HEAD'?undefined:content);
   } catch (error) {if(!res.headersSent) json(res,502,{error:'تعذر الاتصال بالخدمة. حاول مرة أخرى.'});else res.end();}
 });

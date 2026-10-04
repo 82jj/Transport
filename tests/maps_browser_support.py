@@ -1,5 +1,5 @@
 """Real Leaflet code, synthetic tiles, local coordinates: never query community map tiles in CI."""
-import base64,hashlib,os,tempfile,urllib.request
+import base64,hashlib,os,re,tempfile,urllib.request
 from pathlib import Path
 from playwright.sync_api import expect
 PNG=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
@@ -15,7 +15,7 @@ def map_assets(page):
  page.route('https://unpkg.com/leaflet@1.9.4/dist/*',asset)
  page.route('https://tile.openstreetmap.org/**',lambda r:r.fulfill(body=PNG,content_type='image/png'))
 def choose_point(page,field,label):
- page.locator('#select-'+field).click();expect(page.locator('.map-picker .leaflet-container')).to_be_visible()
+ page.locator('#select-'+field).click();expect(page.locator('#picker-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'))
  page.locator('#edit-place').click()
  page.locator('#place-query').fill(label);page.locator('#place-search button').click();page.locator('#place-results .place-result').first.click()
  expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)

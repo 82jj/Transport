@@ -1,1 +1,1 @@
-{"id": "transport-captain", "apiPrefix": "/api/captain", "cookie": "transport_captain_session", "files": ["index.html", "captain.js", "styles.css", "manifest.webmanifest", "icon.svg", "base.css", "onboarding.js", "onboarding.css", "maps.js", "maps.css", "gps.js"]}
+{"id": "transport-captain", "apiPrefix": "/api/captain", "cookie": "transport_captain_session", "files": ["index.html", "captain.js", "styles.css", "manifest.webmanifest", "icon.svg", "base.css", "onboarding.js", "onboarding.css", "maps.js", "maps.css", "gps.js", "google-map.js"]}
