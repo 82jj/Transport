@@ -1,8 +1,9 @@
 // Server credentials never appear in public configuration or upstream error messages.
 const fail=(status,message)=>{throw Object.assign(new Error(message),{status});};
-export function createGoogleMaps({env,fetcher,validPoint}){
- const key=env.GOOGLE_MAPS_API_KEY;
- if(!key||!env.GOOGLE_MAPS_BROWSER_KEY||key===env.GOOGLE_MAPS_BROWSER_KEY)throw new Error('Google Maps requires separate server and browser keys');
+export function createGoogleMaps({env,fetcher,validPoint,demo=false}){
+ // Demo requests use only the explicitly public demo credential, never the server secret.
+ const key=demo?env.GOOGLE_MAPS_BROWSER_KEY:env.GOOGLE_MAPS_API_KEY;
+ if(!key||!env.GOOGLE_MAPS_BROWSER_KEY||!demo&&key===env.GOOGLE_MAPS_BROWSER_KEY)throw new Error('Google Maps requires separate server and browser keys (or a configured public demo key in google-demo mode)');
  const sessionToken=value=>{
   if(typeof value!=='string'||!/^[A-Za-z0-9_-]{16,36}$/.test(value))fail(400,'أعد البحث عن المكان');
   return value;
@@ -11,6 +12,7 @@ export function createGoogleMaps({env,fetcher,validPoint}){
   try{
    const response=await fetcher(url,{method:body?'POST':'GET',headers:{'X-Goog-Api-Key':key,...(body?{'Content-Type':'application/json'}:{}),...(fields?{'X-Goog-FieldMask':fields}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000),redirect:'error'});
    const data=await response.json();
+   if(demo&&response.status===429)fail(429,'وصلت خرائط Google التجريبية إلى حد الاستخدام. حاول لاحقًا.');
    if(!response.ok||data.error||data.status&& !['OK','ZERO_RESULTS'].includes(data.status))fail(503,'تعذر الاتصال بخرائط Google. تحقق من إعدادات الخدمة أو حاول مجددًا.');
    return data;
   }catch(e){if(e.status)throw e;fail(503,'تعذر الاتصال بخرائط Google. حاول مجددًا.');}
@@ -29,8 +31,8 @@ export function createGoogleMaps({env,fetcher,validPoint}){
   }
   // Reverse geocoding describes the chosen pin; it does not move the user's entrance.
   const point=validPoint(body.point);
-  const data=await request('https://maps.googleapis.com/maps/api/geocode/json?'+new URLSearchParams({latlng:`${point.lat},${point.lng}`,language:'ar',key}));
-  return {point,distanceMeters:0,road:String(data.results?.[0]?.formatted_address||'موقع محدد على الخريطة').slice(0,200),provider:'Google'};
+  const data=demo?await request(`https://geocode.googleapis.com/v4/geocode/location/${point.lat},${point.lng}?languageCode=ar`,{fields:'results.formattedAddress'}):await request('https://maps.googleapis.com/maps/api/geocode/json?'+new URLSearchParams({latlng:`${point.lat},${point.lng}`,language:'ar',key}));
+  return {point,distanceMeters:0,road:String((demo?data.results?.[0]?.formattedAddress:data.results?.[0]?.formatted_address)||'موقع محدد على الخريطة').slice(0,200),provider:'Google'};
  }
  async function route(from,to){
   from=validPoint(from);to=validPoint(to);

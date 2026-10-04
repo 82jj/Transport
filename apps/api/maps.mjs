@@ -9,8 +9,9 @@ export function validPoint(value){
 export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,now=Date.now}){
  const origin=env.MAPS_ORIGIN;
  const provider=env.MAPS_PROVIDER||'osm';
- if(!['osm','google'].includes(provider))throw new Error('Invalid MAPS_PROVIDER');
- const google=provider==='google'?createGoogleMaps({env,fetcher,validPoint}):null;
+ if(!['osm','google','google-demo'].includes(provider))throw new Error('Invalid MAPS_PROVIDER');
+ const demo=provider==='google-demo';
+ const google=provider==='google'||demo?createGoogleMaps({env,fetcher,validPoint,demo}):null;
  if(origin&&!/^https?:$/.test(new URL(origin).protocol))throw new Error('Invalid MAPS_ORIGIN');
  db.exec('CREATE TABLE IF NOT EXISTS order_live_locations(order_id TEXT PRIMARY KEY REFERENCES orders(id),captain_id TEXT NOT NULL REFERENCES users(id),payload BLOB NOT NULL,captured_at INTEGER NOT NULL,received_at INTEGER NOT NULL);');
  db.exec('CREATE TABLE IF NOT EXISTS order_geo_consent(order_id TEXT PRIMARY KEY REFERENCES orders(id),started_at INTEGER NOT NULL);');
@@ -43,7 +44,7 @@ export function createMaps(db,{send,seal,decode,env=process.env,fetcher=fetch,no
  async function handlePublic(req,res,path,b){
   if(!path.startsWith('/api/maps/'))return false;
   if(path==='/api/maps/config'&&req.method==='GET'){
-   if(google){send(res,200,{enabled:true,routingReady:true,searchReady:true,center:{lat:24.7136,lng:46.6753},provider:'Google',browserKey:env.GOOGLE_MAPS_BROWSER_KEY,profile:'car',truckCertified:false,backgroundTracking:false});return true;}
+   if(google){send(res,200,{enabled:true,routingReady:true,searchReady:true,demo,center:{lat:24.7136,lng:46.6753},provider:'Google',browserKey:env.GOOGLE_MAPS_BROWSER_KEY,profile:'car',truckCertified:false,backgroundTracking:false});return true;}
    let ready=false,dataDate=null;try{const h=await upstream('/healthz',30000);ready=!!h.ok;dataDate=h.dataDate;}catch{}
    send(res,200,{enabled:true,routingReady:ready,searchReady:ready,tileUrl:env.MAP_TILE_URL||'https://tile.openstreetmap.org/{z}/{x}/{y}.png',center:{lat:24.7136,lng:46.6753},dataDate,provider:'OpenStreetMap',profile:'car',truckCertified:false,backgroundTracking:false});return true;
   }
