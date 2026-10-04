@@ -6,6 +6,19 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright,expect
 OUT=Path(__file__).resolve().parents[1]/'artifacts'/'live-maps';OUT.mkdir(parents=True,exist_ok=True)
 base='https://transport-user-isolated-production.up.railway.app'
+MAP_COMPUTATIONS={base+'/api/maps/search',base+'/api/maps/snap',base+'/api/maps/route',base+'/api/quote',
+ 'https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/GetViewportInfo'}
+def read_only_request(method,url):
+ return method in ['GET','HEAD','OPTIONS'] or method=='POST' and url.split('?',1)[0] in MAP_COMPUTATIONS
+# Google's raster SDK reads viewport metadata with POST; no other SDK writes are allowed.
+viewport='https://maps.googleapis.com/$rpc/google.internal.maps.mapsjs.v1.MapsJsInternalService/GetViewportInfo'
+assert read_only_request('POST',viewport)
+assert not read_only_request('DELETE',viewport)
+assert not read_only_request('POST',viewport+'/AcceptOrder')
+assert not read_only_request('POST',viewport.replace('maps.googleapis.com','maps.googleapis.com.example.com'))
+assert not read_only_request('POST',base+'/api/user/orders')
+assert not read_only_request('POST',base+'/api/user/register')
+assert not read_only_request('POST','https://maps.googleapis.com/other-rpc')
 with sync_playwright() as p:
  for name in (['chromium','webkit'] if os.environ.get('TEST_WEBKIT')=='1' else ['chromium']):
   browser=getattr(p,name).launch(headless=True)
@@ -13,8 +26,8 @@ with sync_playwright() as p:
   page.on('pageerror',lambda e:errors.append(str(e)))
   def guard(route):
    req=route.request
-   if req.method not in ['GET','HEAD','OPTIONS'] and req.url.split('?',1)[0] not in [base+'/api/maps/search',base+'/api/maps/snap',base+'/api/maps/route',base+'/api/quote']:
-    forbidden.append(req.url);route.abort();return
+   if not read_only_request(req.method,req.url):
+    forbidden.append(req.url.split('?',1)[0]);route.abort();return
    route.continue_()
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
