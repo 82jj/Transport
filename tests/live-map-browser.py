@@ -26,7 +26,12 @@ with sync_playwright() as p:
    page.locator('#edit-place').click()
    page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('#place-results .place-result').first).to_be_visible(timeout=30000)
    page.locator('#place-results .place-result').first.click()
-   expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000);page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+   try:expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000)
+   except AssertionError:
+    page.screenshot(path=str(OUT/(name+'-'+field+'-confirmation-failure.png')),full_page=True)
+    print(json.dumps({'field':field,'searchStatus':page.locator('#place-search-status').inner_text(),'mapStatus':page.locator('#pick-status').inner_text(),'blockedRequests':[url.split('?',1)[0] for url in forbidden]},ensure_ascii=False),flush=True)
+    raise
+   page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
   expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
   page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
   expect(page.locator('.service-step')).to_be_visible()
