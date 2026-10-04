@@ -50,7 +50,9 @@
 .picker-bottom .map-help{font-size:13px;color:#57646e;margin:4px 0 12px;line-height:1.7}
 .picker-bottom .primary{background:#172b3b;color:#fff;border-radius:10px;min-height:54px;margin:0;font-size:17px;box-shadow:none}
 .map-picker[data-mode=map] #place-search,.map-picker[data-mode=map] #place-results,.map-picker[data-mode=map] #place-search-status,.map-picker[data-mode=map] #back-to-map{display:none!important}
-.map-picker[data-mode=search] .picker-map-wrap,.map-picker[data-mode=search] .picker-bottom{display:none}
+/* Keep the SDK viewport sized while its tiles load behind address search. */
+.map-picker[data-mode=search] .picker-map-wrap{position:absolute;inset:70px 0 0;visibility:hidden;pointer-events:none}
+.map-picker[data-mode=search] .picker-bottom{display:none}
 .map-picker[data-mode=search] #place-search{padding:4px 18px 12px;margin:0}
 .map-picker .picker-search-row{background:#f3f4f5;border:0;border-radius:9px}
 .map-picker #place-query{background:none;color:#172b3b;font-size:17px!important}
