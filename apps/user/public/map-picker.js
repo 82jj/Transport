@@ -5,7 +5,7 @@ export function locationFields(d,esc){
  const ready=!!(d.pickupPoint&&d.destinationPoint);
  return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><label for="${field}" class="visually-hidden">${title}</label><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><div class="location-results" id="${field}-results" hidden></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}<button type="button" class="text-button current-location" id="auto-pickup">⌖ <span>استخدام موقعي الحالي للالتقاء</span></button></div>${ready?'<section class="request-map-panel"><div class="real-map" id="request-map" role="region" aria-label="مسار الالتقاء إلى الوجهة"></div><p class="map-help" id="request-route-status" role="status">جاري عرض المسار…</p></section>':''}<input name="distance" type="hidden" value="${d.distanceKm||0}">`;
 }
-function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button}){
+function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,initialSearch=false}){
  let dead=false,seq=0,timer,places=[],active=-1;
  function clear(){places=[];active=-1;results.replaceChildren();results.hidden=true;input.setAttribute('aria-expanded','false');}
  async function search(){
@@ -31,6 +31,7 @@ function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button}){
   if(e.key==='Enter'){e.preventDefault();if(active>=0&&places[active])select(places[active]);else search();}
  });
  if(button)button.onclick=search;
+ if(initialSearch&&input.value.trim().length>=2)timer=setTimeout(search,350);
  return ()=>{dead=true;seq++;clearTimeout(timer);};
 }
 export function bindLocationFields({draft,api,onChange,toast}){
@@ -38,7 +39,7 @@ export function bindLocationFields({draft,api,onChange,toast}){
  if(map){const status=document.querySelector('#request-route-status');map.draw(draft).then(async()=>{const route=await api('/api/maps/route',{method:'POST',body:JSON.stringify({from:draft.pickupPoint,to:draft.destinationPoint})});if(dead)return;await map.draw({...draft,route});if(!dead)status.textContent=`${Math.max(1,Math.round(route.durationSeconds/60))} دقيقة · ${(route.distanceMeters/1000).toFixed(1)} كم`;}).catch(e=>{if(!dead)status.textContent=e.message;});}
  function choose(field,auto=false){open?.close();open=openPicker({api,point:draft[field+'Point'],label:draft[field],auto,title:field==='pickup'?'نقطة الالتقاء':'الوجهة',onChoose:(point,label)=>{draft[field+'Point']=point;draft[field]=label;draft.distanceKm=0;onChange();}});}
  for(const field of ['pickup','destination']){
-  searches.push(bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,onSelect:async(place,current)=>{const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify({point:{lat:place.lat,lng:place.lng}})});if(!current())return;draft[field+'Point']=d.point;draft[field]=place.label;draft.distanceKm=0;onChange();},onEdit:()=>{draft[field+'Point']=null;draft.distanceKm=0;document.querySelector('.request-map-panel')?.setAttribute('hidden','');document.querySelector('.service-step')?.setAttribute('hidden','');}}));
+  searches.push(bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,initialSearch:!draft[field+'Point'],onSelect:async(place,current)=>{const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify({point:{lat:place.lat,lng:place.lng}})});if(!current())return;draft[field+'Point']=d.point;draft[field]=place.label;draft.distanceKm=0;onChange();},onEdit:()=>{draft[field+'Point']=null;draft.distanceKm=0;document.querySelector('.request-map-panel')?.setAttribute('hidden','');document.querySelector('.service-step')?.setAttribute('hidden','');}}));
   document.querySelector('#select-'+field).onclick=()=>choose(field);
  }
  document.querySelector('#auto-pickup').onclick=()=>choose('pickup',true);
