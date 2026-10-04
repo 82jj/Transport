@@ -27,8 +27,8 @@
 .real-map .leaflet-control-zoom{border:0!important;box-shadow:0 2px 9px #173d5133;border-radius:12px;overflow:hidden}
 .real-map .leaflet-control-zoom a{width:42px!important;height:42px!important;line-height:42px!important;font-size:24px!important;background:#fff;color:#193f59}
 .real-map .leaflet-control-attribution{font-size:10px!important;color:#365368}
-.location-map-marker{background:none;border:0}.location-map-marker span{display:grid;place-items:center;width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;background:#1475cf;color:white;font-size:0;box-shadow:0 2px 5px #1235}
-.location-map-marker span:after{content:'١';font:bold 16px Tahoma;transform:rotate(45deg)}.location-map-marker .destination{background:#173b4f}.location-map-marker .destination:after{content:'٢'}
+.location-map-marker{background:none;border:0}.location-map-marker span,.location-map-marker button{display:grid;place-items:center;width:32px;height:32px;padding:0;min-height:0;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:3px solid white;background:#1475cf;color:white;font-size:0;box-shadow:0 2px 5px #1235}
+.location-map-marker span:after,.location-map-marker button:after{content:'١';font:bold 16px Tahoma;transform:rotate(45deg)}.location-map-marker .destination{background:#173b4f}.location-map-marker .destination:after{content:'٢'}
 @media(max-width:500px){.map-picker{height:100dvh;max-height:100dvh;border-radius:0;margin:0 auto}.map-picker #picker-map{height:clamp(260px,42dvh,420px)}}
 
 /* A full-height map with a stationary pin and one confirmation. */

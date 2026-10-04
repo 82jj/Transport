@@ -15,7 +15,6 @@ def map_assets(page):
  page.route('https://unpkg.com/leaflet@1.9.4/dist/*',asset)
  page.route('https://tile.openstreetmap.org/**',lambda r:r.fulfill(body=PNG,content_type='image/png'))
 def choose_point(page,field,label):
- page.locator('#select-'+field).click();expect(page.locator('#picker-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'))
- page.locator('#edit-place').click()
- page.locator('#place-query').fill(label);page.locator('#place-search button').click();page.locator('#place-results .place-result').first.click()
- expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+ page.locator('#'+field).fill(label);page.locator('#'+field+'-results .place-result').first.click()
+ expect(page.locator('#'+field)).to_have_value(label);expect(page.locator('#'+field+'-results')).not_to_be_visible()
+ expect(page.locator('#request-map [data-location-pin='+field+']')).to_be_visible()
