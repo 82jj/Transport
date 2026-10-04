@@ -16,5 +16,6 @@ def map_assets(page):
  page.route('https://tile.openstreetmap.org/**',lambda r:r.fulfill(body=PNG,content_type='image/png'))
 def choose_point(page,field,label):
  page.locator('#select-'+field).click();expect(page.locator('.map-picker .leaflet-container')).to_be_visible()
+ page.locator('#edit-place').click()
  page.locator('#place-query').fill(label);page.locator('#place-search button').click();page.locator('.place-result').first.click()
- page.locator('#pick-confirm').click();expect(page.locator('#pick-confirm')).to_have_text('اعتماد هذه النقطة');page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+ expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)

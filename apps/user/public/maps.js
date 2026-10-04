@@ -18,11 +18,10 @@ export class MapView{
   this.ready=Promise.all([loadLeaflet(),mapConfig(api)]).then(([L,c])=>{
    if(this.dead||!element.isConnected)return;
    this.L=L;this.config=c;this.map=L.map(element,{zoomControl:false,attributionControl:true,scrollWheelZoom:false}).setView(coords(center||c.center),zoom);
-   // Enlarge raster labels with a matching zoom offset, preserving map coordinates.
    L.control.zoom({position:'bottomleft',zoomInTitle:'تكبير الخريطة',zoomOutTitle:'تصغير الخريطة'}).addTo(this.map);
-   L.tileLayer(c.tileUrl,{tileSize:512,zoomOffset:-1,maxZoom:20,minZoom:5,keepBuffer:1,updateWhenIdle:true,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).on('tileerror',()=>{element.setAttribute('aria-label','تعذر تحميل بعض مربعات الخريطة؛ تحقق من الإنترنت');}).addTo(this.map);
+   L.tileLayer(c.tileUrl,{maxZoom:19,minZoom:5,keepBuffer:1,updateWhenIdle:true,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).on('tileerror',()=>{element.setAttribute('aria-label','تعذر تحميل بعض مربعات الخريطة؛ تحقق من الإنترنت');}).addTo(this.map);
    this.map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
-   this.resize=new ResizeObserver(()=>this.map?.invalidateSize({pan:false}));this.resize.observe(element);this.map.invalidateSize();
+   this.resize=new ResizeObserver(()=>this.map?.invalidateSize({animate:false}));this.resize.observe(element);this.map.invalidateSize({animate:false});
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
  async draw({pickupPoint,destinationPoint,route,location,stale=false}={}){

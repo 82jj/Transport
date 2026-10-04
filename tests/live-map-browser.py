@@ -18,14 +18,18 @@ with sync_playwright() as p:
    route.continue_()
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
-  expect(page.locator('#request-map.leaflet-container')).to_be_visible(timeout=30000)
-  # A function predicate avoids eval under the application's strict production CSP.
-  page.wait_for_function("() => [...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+  expect(page.locator('#request-map')).to_have_count(0)
   for field,label in [('pickup','الرياض'),('destination','الملك فهد')]:
    page.locator('#select-'+field).click();expect(page.locator('.map-picker .leaflet-container')).to_be_visible(timeout=30000)
+   # Real map tiles, with the native tile scale and a single confirmation.
+   page.wait_for_function("() => [...document.querySelectorAll('#picker-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+   page.locator('#edit-place').click()
    page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('.place-result').first).to_be_visible(timeout=30000)
    page.locator('.place-result').first.click()
-   page.locator('.map-picker .close').click()
+   expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000);page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+  expect(page.locator('#request-map.leaflet-container')).to_be_visible(timeout=30000)
+  page.wait_for_function("() => [...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+  expect(page.locator('.service-step')).to_be_visible()
   result=context.request.post(base+'/api/maps/snap',data={'point':{'lat':24.7136,'lng':46.6753}})
   assert result.ok,result.status
   assert result.json()['distanceMeters']<=250
