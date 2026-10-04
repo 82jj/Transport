@@ -6,23 +6,24 @@ export function locationFields(d,esc){
  return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><label for="${field}" class="visually-hidden">${title}</label><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><div class="location-results" id="${field}-results" hidden></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}<button type="button" class="text-button current-location" id="auto-pickup">⌖ <span>استخدام موقعي الحالي للالتقاء</span></button></div>${ready?'<section class="request-map-panel"><div class="real-map" id="request-map" role="region" aria-label="مسار الالتقاء إلى الوجهة"></div><p class="map-help" id="request-route-status" role="status">جاري عرض المسار…</p></section>':''}<input name="distance" type="hidden" value="${d.distanceKm||0}">`;
 }
 function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,initialSearch=false}){
- let dead=false,seq=0,timer,places=[],active=-1;
+ let dead=false,seq=0,timer,places=[],active=-1,sessionToken=crypto.randomUUID();
  function clear(){places=[];active=-1;results.replaceChildren();results.hidden=true;input.setAttribute('aria-expanded','false');}
  async function search(){
   clearTimeout(timer);const query=input.value.trim(),token=++seq;clear();
   if(query.length<2){status.textContent='';return;}
   status.textContent='جاري البحث…';if(button)button.disabled=true;
-  try{const d=await api('/api/maps/search',{method:'POST',body:JSON.stringify({query})});if(dead||token!==seq||input.value.trim()!==query)return;
+  try{const d=await api('/api/maps/search',{method:'POST',body:JSON.stringify({query,sessionToken})});if(dead||token!==seq||input.value.trim()!==query)return;
    places=d.results||[];status.textContent=places.length?'':'لم نجد هذا المكان. جرّب اسم شارع أو حي، أو اختره على الخريطة.';
    for(const place of places){const b=document.createElement('button');b.type='button';b.className='place-result';const title=document.createElement('b'),detail=document.createElement('small');const [name,...rest]=place.label.split('،');title.textContent=name;detail.textContent=rest.join('،')||'اختيار هذا المكان';b.append(title,detail);b.onclick=()=>select(place);results.append(b);}
+   if(places.some(p=>p.provider==='Google')){const credit=document.createElement('small');credit.className='maps-attribution';credit.translate=false;credit.textContent='Google Maps';results.append(credit);}
    results.hidden=!places.length;input.setAttribute('aria-expanded',String(!!places.length));
   }catch(e){if(!dead&&token===seq)status.textContent=e.message;}finally{if(button&&!dead&&token===seq)button.disabled=false;}
  }
  async function select(place){
-  const token=++seq;clearTimeout(timer);status.textContent='جاري تحديد المكان…';for(const b of results.children)b.disabled=true;
+  const token=++seq;clearTimeout(timer);status.textContent='جاري تحديد المكان…';for(const b of results.querySelectorAll('button'))b.disabled=true;
   const current=()=>!dead&&seq===token;
-  try{await onSelect(place,current);if(current()){input.value=place.label;clear();status.textContent='';}}
-  catch(e){if(current()){status.textContent=e.message;for(const b of results.children)b.disabled=false;}}
+  try{await onSelect(place,current);if(current()){input.value=place.label;clear();status.textContent='';sessionToken=crypto.randomUUID();}}
+  catch(e){if(current()){status.textContent=e.message;for(const b of results.querySelectorAll('button'))b.disabled=false;}}
  }
  input.addEventListener('input',()=>{seq++;clear();onEdit();status.textContent='';if(button)button.disabled=false;clearTimeout(timer);timer=setTimeout(search,350);});
  input.addEventListener('keydown',e=>{
@@ -39,7 +40,7 @@ export function bindLocationFields({draft,api,onChange,toast}){
  if(map){const status=document.querySelector('#request-route-status');map.draw(draft).then(async()=>{const route=await api('/api/maps/route',{method:'POST',body:JSON.stringify({from:draft.pickupPoint,to:draft.destinationPoint})});if(dead)return;await map.draw({...draft,route});if(!dead)status.textContent=`${Math.max(1,Math.round(route.durationSeconds/60))} دقيقة · ${(route.distanceMeters/1000).toFixed(1)} كم`;}).catch(e=>{if(!dead)status.textContent=e.message;});}
  function choose(field,auto=false){open?.close();open=openPicker({api,point:draft[field+'Point'],label:draft[field],auto,title:field==='pickup'?'نقطة الالتقاء':'الوجهة',onChoose:(point,label)=>{draft[field+'Point']=point;draft[field]=label;draft.distanceKm=0;onChange();}});}
  for(const field of ['pickup','destination']){
-  searches.push(bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,initialSearch:!draft[field+'Point'],onSelect:async(place,current)=>{const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify({point:{lat:place.lat,lng:place.lng}})});if(!current())return;draft[field+'Point']=d.point;draft[field]=place.label;draft.distanceKm=0;onChange();},onEdit:()=>{draft[field+'Point']=null;draft.distanceKm=0;document.querySelector('.request-map-panel')?.setAttribute('hidden','');document.querySelector('.service-step')?.setAttribute('hidden','');}}));
+  searches.push(bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,initialSearch:!draft[field+'Point'],onSelect:async(place,current)=>{const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify(place.placeId?{placeId:place.placeId,sessionToken:place.sessionToken}:{point:{lat:place.lat,lng:place.lng}})});if(!current())return;draft[field+'Point']=d.point;draft[field]=place.label;draft.distanceKm=0;onChange();},onEdit:()=>{draft[field+'Point']=null;draft.distanceKm=0;document.querySelector('.request-map-panel')?.setAttribute('hidden','');document.querySelector('.service-step')?.setAttribute('hidden','');}}));
   document.querySelector('#select-'+field).onclick=()=>choose(field);
  }
  document.querySelector('#auto-pickup').onclick=()=>choose('pickup',true);
@@ -58,13 +59,13 @@ export function openPicker({api,point,label:initialLabel='',auto=false,title,onC
   catch(e){if(!dead&&rev===revision){status.textContent=e.message;confirm.textContent='إعادة المحاولة';confirm.disabled=false;}}
  }
  const invalidate=()=>{if(movingByCode)return;const p=map.map.getCenter();if(lastCenter&&map.map.distance([lastCenter.lat,lastCenter.lng],[p.lat,p.lng])<1)return;revision++;snapped=null;confirm.disabled=true;name.textContent='المكان عند العلامة';status.textContent='جاري تحديد نقطة الوصول…';candidate={lat:p.lat,lng:p.lng};lastCenter=candidate;clearTimeout(timer);timer=setTimeout(()=>snap(candidate),300);};
- const setView=(p,text='')=>{movingByCode=true;lastCenter=p;map.map.setView([p.lat,p.lng],17,{animate:false});movingByCode=false;mode('map');return snap(p,text);};
+ const setView=(p,text='',resolved=false)=>{movingByCode=true;lastCenter=p;map.map.setView([p.lat,p.lng],17,{animate:false});movingByCode=false;mode('map');if(resolved){clearTimeout(timer);revision++;candidate=p;snapped=p;label=text;name.textContent=text;status.textContent='تأكد أن العلامة عند المدخل المناسب.';confirm.textContent=confirmation;confirm.disabled=false;return;}return snap(p,text);};
  async function locate(){
   if(!navigator.geolocation){status.textContent='اختر المكان يدويًا؛ تحديد الموقع غير مدعوم.';return;}
   const rev=++revision;confirm.disabled=true;snapped=null;status.textContent='جاري تحديد موقعك…';
   navigator.geolocation.getCurrentPosition(p=>{if(dead||rev!==revision)return;if(p.coords.accuracy>500){status.textContent='دقة الموقع ضعيفة. حرّك الخريطة لتحديد المدخل.';confirm.textContent='إعادة المحاولة';confirm.disabled=false;return;}setView({lat:p.coords.latitude,lng:p.coords.longitude},'موقعي الحالي');},e=>{if(dead||rev!==revision)return;status.textContent=e.code===1?'لم يُسمح بالموقع. يمكنك اختيار المكان على الخريطة.':'تعذر تحديد موقعك. يمكنك اختيار المكان على الخريطة.';confirm.textContent='إعادة المحاولة';confirm.disabled=false;},{enableHighAccuracy:true,maximumAge:0,timeout:15000});
  }
- const stopSearch=bindSearch({input:dialog.querySelector('#place-query'),results:dialog.querySelector('#place-results'),status:dialog.querySelector('#place-search-status'),api,onSelect:async(place,current)=>{await map.ready;if(current())await setView({lat:place.lat,lng:place.lng},place.label);},button:dialog.querySelector('#place-search button')});
+ const stopSearch=bindSearch({input:dialog.querySelector('#place-query'),results:dialog.querySelector('#place-results'),status:dialog.querySelector('#place-search-status'),api,onSelect:async(place,current)=>{await map.ready;if(!current())return;let p={lat:place.lat,lng:place.lng};if(place.placeId){const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify({placeId:place.placeId,sessionToken:place.sessionToken})});if(!current())return;p=d.point;}await setView(p,place.label,!!place.placeId);},button:dialog.querySelector('#place-search button')});
  dialog.querySelector('#place-search').onsubmit=e=>{e.preventDefault();dialog.querySelector('#place-search button').click();};
  dialog.querySelector('#edit-place').onclick=()=>mode('search');dialog.querySelector('#back-to-map').onclick=()=>mode('map');
  map.ready.then(()=>{if(dead)return;map.map.on('moveend',invalidate);map.map.on('click',e=>setView({lat:e.latlng.lat,lng:e.latlng.lng}));const p=map.map.getCenter();candidate={lat:p.lat,lng:p.lng};lastCenter=candidate;if(auto)locate();else snap(candidate,initialLabel);}).catch(e=>{status.textContent=e.message;});

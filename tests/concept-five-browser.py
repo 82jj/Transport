@@ -22,24 +22,28 @@ def check(label):
 def no_overflow(page):
  assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 1'), 'Horizontal overflow'
 
-def fixture(page, role, logged=False, approved=True, orders=None):
+def fixture(page, role, logged=False, approved=True, orders=None, google=False, google_fail=False):
  map_assets(page)
+ if google:page.route('https://maps.googleapis.com/maps/api/js**',lambda route:route.fulfill(content_type='text/javascript',body="window.gm_authFailure();" if google_fail else (ROOT/'tests/google-map-sdk-fixture.js').read_text()))
  state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None,'hold_snap':False,'pending_snap':None,'fail_snap':False}
  def handle(route):
-  req=route.request; path=req.url.split('/api/',1)[1].split('?',1)[0]
+  req=route.request
+  if not req.url.startswith('http://127.0.0.1:321'):route.fallback();return
+  path=req.url.split('/api/',1)[1].split('?',1)[0]
   method=req.method
   if method!='GET':state['writes'].append((path,method,req.post_data_json))
   status=200; result={}
-  if path=='maps/config':result={'enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
+  if path=='maps/config':result={'provider':'Google' if google else 'OpenStreetMap','browserKey':'browser-test-key','enabled':True,'routingReady':True,'tileUrl':'https://tile.openstreetmap.org/{z}/{x}/{y}.png','center':{'lat':24.7136,'lng':46.6753}}
   elif path=='maps/search':
    query=req.post_data_json['query']
    if query=='بحث متأخر':state['pending_search']=route;return
    if query=='بحث فاشل':status,result=503,{'error':'تعذر البحث الآن'}
    else:result={'results':[] if query=='بلا نتائج' else [{'id':'p','label':query,'lat':24.7136,'lng':46.6753}]}
+   if google and result.get('results'):result['results']=[{'id':'google-fixture-place','placeId':'google-fixture-place','label':query,'sessionToken':req.post_data_json['sessionToken'],'provider':'Google'}]
   elif path=='maps/snap':
    if state['hold_snap']:state['pending_snap']=route;return
    if state['fail_snap']:status,result=503,{'error':'تعذر تحديد نقطة الوصول'}
-   else:result={'point':req.post_data_json['point'],'road':'شارع اختبار','distanceMeters':10}
+   else:result={'point':req.post_data_json.get('point',{'lat':24.7136,'lng':46.6753}),'road':'شارع اختبار','distanceMeters':10}
   elif path=='maps/route':
    data=req.post_data_json;result={'distanceMeters':8200,'durationSeconds':600,'geometry':{'type':'LineString','coordinates':[[data['from']['lng'],data['from']['lat']],[data['to']['lng'],data['to']['lat']]]}}
   elif path=='services':result=CATALOG
@@ -176,6 +180,21 @@ try:
    page.screenshot(path=str(OUT/f'{engine}-user-pickup-confirmation.png'),full_page=True)
    page.locator('#pick-confirm').click();expect(page.locator('#pickup')).to_have_value('موقعي الحالي');expect(page.locator('.map-picker')).to_have_count(0)
    ctx.close();check(engine+': GPS pickup confirmed once, snap error retry, cancelled pending lookup cannot change draft')
+   ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+   st=fixture(page,'user',google=True);sdk=[];page.on('request',lambda r:sdk.append(r.url) if r.url.startswith('https://maps.googleapis.com/maps/api/js?') else None)
+   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click()
+   page.locator('#pickup').fill('مكان من Google');expect(page.locator('#pickup-results .maps-attribution')).to_have_text('Google Maps')
+   page.locator('#pickup-results .place-result').click();expect(page.locator('#pickup-results')).not_to_be_visible()
+   choose_point(page,'destination','وجهة Google')
+   expect(page.locator('#request-map')).to_have_attribute('data-map-provider','Google');expect(page.locator('#request-map')).to_have_attribute('data-map-ready','true');expect(page.locator('.service-step')).to_be_visible()
+   assert len(sdk)==1;assert 'language=ar' in sdk[0];assert 'region=SA' in sdk[0]
+   selections=[body for path,method,body in st['writes'] if path=='maps/snap' and 'placeId' in body];assert len(selections)==2;assert all('sessionToken' in body and 'point' not in body for body in selections)
+   page.locator('#select-pickup').click();expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('.map-picker .close').click();expect(page.locator('#pickup')).to_have_value('مكان من Google')
+   assert not errors,errors;ctx.close();check(engine+': Google SDK contract fixture: Arabic loader once, place ID resolution, attribution, one-confirm map and preserved draft (not real Google imagery)')
+   ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();fixture(page,'user',google=True,google_fail=True)
+   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click();page.locator('#select-pickup').click()
+   expect(page.locator('#picker-map.map-error')).to_contain_text('Google');expect(page.locator('#pick-confirm')).to_be_disabled();page.locator('.map-picker .close').click();expect(page.locator('#pickup')).to_have_value('')
+   ctx.close();check(engine+': Google loader failure disables confirmation and does not save a false location')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();st=fixture(page,'captain',logged=True,approved=False);page.goto('http://127.0.0.1:3212/');expect(page.locator('#online')).to_be_disabled();expect(page.locator('body')).to_contain_text('حسابك قيد المراجعة');assert not st['writes'];ctx.close();check(engine+': unapproved captain cannot receive/accept requests')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'captain',logged=True,approved=True,orders=[dict(ORDER)]);page.goto('http://127.0.0.1:3212/');page.locator('#online').click();page.locator('[data-order]').click();expect(page.locator('[data-screen=offer]')).to_be_visible();no_overflow(page);assert not page.locator('.concept-nav').is_visible();page.screenshot(path=str(OUT/f'{engine}-captain-offer-fixture.png'),full_page=True)

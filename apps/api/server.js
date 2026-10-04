@@ -83,6 +83,7 @@ const server=http.createServer(async(req,res)=>{
   if(role==='user' && action==='orders' && method==='POST'){
    const q=await quote(b),pickup=text(b.pickup),destination=text(b.destination);if(typeof b.unaccompanied!=='boolean')fail(400,'حدد خيار المرافقة');
    const id=randomUUID(),createdAt=new Date().toISOString(),data={...q,price:q.total,pickup,destination,unaccompanied:b.unaccompanied};
+   if(data.route?.provider==='Google')data.route=null;
    db.prepare('INSERT INTO orders VALUES(?,?,?,?,?,?)').run(id,user.id,null,'searching',JSON.stringify(data),createdAt);
    return send(res,201,present(db.prepare('SELECT * FROM orders WHERE id=?').get(id)));
   }

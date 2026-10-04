@@ -1,3 +1,4 @@
+import {loadGoogleMaps,GoogleMapView} from './google-map.js';
 // Shared rendering utility; each independent frontend ships its own copy.
 let library,configPromise;
 export async function mapConfig(api){if(!configPromise)configPromise=api('/api/maps/config').catch(e=>{configPromise=null;throw e;});return configPromise;}
@@ -15,9 +16,13 @@ const textNode=t=>{const s=document.createElement('span');s.textContent=t;return
 export class MapView{
  constructor(element,api,{center,zoom=14}={}){
   this.element=element;this.dead=false;this.layers=[];this.fitted=false;
-  this.ready=Promise.all([loadLeaflet(),mapConfig(api)]).then(([L,c])=>{
+  this.ready=mapConfig(api).then(async c=>{
    if(this.dead||!element.isConnected)return;
-   this.L=L;this.config=c;this.map=L.map(element,{zoomControl:false,attributionControl:true,scrollWheelZoom:false}).setView(coords(center||c.center),zoom);
+   this.config=c;
+   if(c.provider==='Google'){const G=await loadGoogleMaps(c.browserKey);if(this.dead||!element.isConnected)return;this.google=new GoogleMapView(element,G,{center:center||c.center,zoom});await this.google.ready;if(this.dead||!element.isConnected){this.google.destroy();return;}this.map=this.google.map;this.resize=new ResizeObserver(()=>this.map?.invalidateSize());this.resize.observe(element);return;}
+   const L=await loadLeaflet();
+   if(this.dead||!element.isConnected)return;
+   element.dataset.mapProvider='OpenStreetMap';this.L=L;this.config=c;this.map=L.map(element,{zoomControl:false,attributionControl:true,scrollWheelZoom:false}).setView(coords(center||c.center),zoom);
    L.control.zoom({position:'bottomleft',zoomInTitle:'تكبير الخريطة',zoomOutTitle:'تصغير الخريطة'}).addTo(this.map);
    L.tileLayer(c.tileUrl,{maxZoom:19,minZoom:5,keepBuffer:1,updateWhenIdle:true,referrerPolicy:'strict-origin-when-cross-origin',attribution:'© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'}).on('tileerror',()=>{element.setAttribute('aria-label','تعذر تحميل بعض مربعات الخريطة؛ تحقق من الإنترنت');}).addTo(this.map);
    this.map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
@@ -25,13 +30,13 @@ export class MapView{
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
  async draw({pickupPoint,destinationPoint,route,location,stale=false}={}){
-  await this.ready;if(this.dead||!this.map)return;const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
+  await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
   for(const [p,label]of [[pickupPoint,'نقطة الالتقاء'],[destinationPoint,'الوجهة']])if(p){bounds.push(coords(p));this.layers.push(L.marker(coords(p),{icon:L.divIcon({className:'location-map-marker',html:'<span class="'+(label==='الوجهة'?'destination':'pickup')+'">'+(label==='الوجهة'?'٢':'١')+'</span>',iconSize:[32,40],iconAnchor:[16,40]})}).bindTooltip(textNode(label)).addTo(map));}
   if(route?.geometry?.coordinates?.length){const line=L.polyline(route.geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#0875ef',weight:5,opacity:.85}).addTo(map);this.layers.push(line);bounds.push(...line.getLatLngs());}
   if(location){bounds.push(coords(location));this.layers.push(L.circle(coords(location),{radius:Math.min(location.accuracy||10,500),color:stale?'#8995a3':'#00a787',weight:1,fillOpacity:.1}).addTo(map));this.layers.push(L.marker(coords(location),{icon:L.divIcon({className:'captain-map-marker'+(stale?' stale':''),html:'<span aria-label="موقع الكابتن">🚚</span>',iconSize:[34,34],iconAnchor:[17,17]})}).bindTooltip(textNode(stale?'آخر موقع معروف — متأخر':'موقع الكابتن')).addTo(map));}
   if(bounds.length&&!this.fitted){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
  }
- destroy(){this.dead=true;this.resize?.disconnect();this.map?.remove();this.map=null;}
+ destroy(){this.dead=true;this.resize?.disconnect();if(this.google)this.google.destroy();else this.map?.remove();this.map=null;}
 }
 export function routeShell(){return '<section class="real-map-panel"><div class="real-map" data-order-map role="region" aria-label="خريطة الطلب"></div><p class="map-live-status" data-map-status role="status">جاري تحميل الخريطة…</p></section>';}
 export function mountOrderMap({element,api,role,order}){

@@ -1,7 +1,7 @@
 """Read-only real public map rendering. No mocked responses or personal positions.
 Only fixed-place map computations are allowed to use POST. No production writes.
 """
-import json,os
+import json,os,re
 from pathlib import Path
 from playwright.sync_api import sync_playwright,expect
 OUT=Path(__file__).resolve().parents[1]/'artifacts'/'live-maps';OUT.mkdir(parents=True,exist_ok=True)
@@ -20,15 +20,15 @@ with sync_playwright() as p:
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
   expect(page.locator('#request-map')).to_have_count(0)
   for field,label in [('pickup','الرياض'),('destination','الملك فهد')]:
-   page.locator('#select-'+field).click();expect(page.locator('.map-picker .leaflet-container')).to_be_visible(timeout=30000)
+   page.locator('#select-'+field).click();expect(page.locator('#picker-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
    # Real map tiles, with the native tile scale and a single confirmation.
-   page.wait_for_function("() => [...document.querySelectorAll('#picker-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+   page.wait_for_function("() => [...document.querySelectorAll('#picker-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
    page.locator('#edit-place').click()
    page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('#place-results .place-result').first).to_be_visible(timeout=30000)
    page.locator('#place-results .place-result').first.click()
    expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000);page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
-  expect(page.locator('#request-map.leaflet-container')).to_be_visible(timeout=30000)
-  page.wait_for_function("() => [...document.querySelectorAll('#request-map img.leaflet-tile')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+  expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
+  page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
   expect(page.locator('.service-step')).to_be_visible()
   result=context.request.post(base+'/api/maps/snap',data={'point':{'lat':24.7136,'lng':46.6753}})
   assert result.ok,result.status
@@ -37,6 +37,6 @@ with sync_playwright() as p:
   assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
   assert not errors,errors
   assert not forbidden,forbidden
-  (OUT/(name+'-report.json')).write_text(json.dumps({'provider':'OpenStreetMap','realTilesLoaded':True,'arabicSearchVerified':True,'nearestRoadVerified':True,'productionWrites':0,'errors':errors}))
+  (OUT/(name+'-report.json')).write_text(json.dumps({'provider':page.locator('#request-map').get_attribute('data-map-provider'),'realTilesLoaded':True,'arabicSearchVerified':True,'nearestRoadVerified':True,'productionWrites':0,'errors':errors}))
   print('PASS',name,'real production map tiles, Arabic search and nearest road; no accounts/orders/GPS writes',flush=True)
   context.close();browser.close()
