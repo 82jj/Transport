@@ -9,8 +9,8 @@ export function loadGoogleMaps(key){
   const timer=setTimeout(fail,20000);
   script.src='https://maps.googleapis.com/maps/api/js?'+new URLSearchParams({key,v:'quarterly',loading:'async',callback:'wasilGoogleReady',language:'ar',region:'SA'});
   const nonce=document.querySelector('script[nonce]')?.nonce||'';
-  if(nonce&&!document.querySelector('style[nonce]')){const style=document.createElement('style');style.nonce=nonce;document.head.append(style);}
-  script.async=true;script.nonce=nonce;script.onerror=fail;document.head.append(script);
+  if(nonce&&!document.querySelector('style[nonce]')){const style=document.createElement('style');style.setAttribute('nonce',nonce);document.head.append(style);}
+  script.async=true;script.setAttribute('nonce',nonce);script.onerror=fail;document.head.append(script);
  });return library;
 }
 const meters=(a,b)=>{const rad=x=>x*Math.PI/180,dlat=rad(b[0]-a[0]),dlng=rad(b[1]-a[1]);const v=Math.sin(dlat/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dlng/2)**2;return 6371000*2*Math.atan2(Math.sqrt(v),Math.sqrt(Math.max(0,1-v)));};
