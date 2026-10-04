@@ -2,7 +2,7 @@ import {MapView} from './maps.js';
 export const pointLabel=p=>p?'موقع محدد على الخريطة':'';
 const pin='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
 export function locationFields(d,esc){
- return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><label for="${field}" class="visually-hidden">${title}</label><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><div class="location-results" id="${field}-results" hidden></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}<button type="button" class="text-button current-location" id="auto-pickup">⌖ <span>استخدام موقعي الحالي للالتقاء</span></button></div><section class="request-map-panel"><div class="real-map" id="request-map" role="region" aria-label="مسار الالتقاء إلى الوجهة"></div><p class="map-help" id="request-route-status" role="status">جاري تحميل الخريطة…</p></section><input name="distance" type="hidden" value="${d.distanceKm||0}">`;
+ return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><label for="${field}" class="visually-hidden">${title}</label><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}<button type="button" class="text-button current-location" id="auto-pickup">⌖ <span>استخدام موقعي الحالي للالتقاء</span></button>${['pickup','destination'].map(field=>`<div class="location-results" id="${field}-results" hidden></div>`).join('')}</div><section class="request-map-panel"><div class="real-map" id="request-map" role="region" aria-label="تحديد الالتقاء والوجهة على الخريطة" tabindex="0" aria-describedby="request-map-hint"></div><p class="map-help map-hint" id="request-map-hint"></p><p class="map-help" id="request-route-status" role="status">جاري تحميل الخريطة…</p></section><input name="distance" type="hidden" value="${d.distanceKm||0}">`;
 }
 function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,initialSearch=false}){
  let dead=false,seq=0,timer,places=[],active=-1,sessionToken=crypto.randomUUID();
@@ -32,33 +32,67 @@ function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,init
  });
  if(button)button.onclick=search;
  if(initialSearch&&input.value.trim().length>=2)timer=setTimeout(search,350);
- return ()=>{dead=true;seq++;clearTimeout(timer);};
+ const cancel=()=>{seq++;clearTimeout(timer);clear();status.textContent='';sessionToken=crypto.randomUUID();if(button)button.disabled=false;};
+ const stop=()=>{dead=true;cancel();};stop.cancel=cancel;return stop;
 }
 export function bindLocationFields({draft,api,onChange,toast}){
- const el=document.querySelector('#request-map'),map=el?new MapView(el,api):null;let dead=false,open=null,mapRevision=0;const searches=[];
- async function refreshMap(){
+ const el=document.querySelector('#request-map'),map=el?new MapView(el,api):null;
+ let dead=false,open=null,mapRevision=0,active='destination';const searches={},versions={pickup:0,destination:0},pending=new Set();
+ const title=field=>field==='pickup'?'الالتقاء':'الوجهة';
+ const target=()=>!draft.pickupPoint?'pickup':!draft.destinationPoint?'destination':active;
+ function changed(){
+  const field=target();el.dataset.selectionTarget=field;
+  document.querySelector('#request-map-hint').textContent=`اضغط مطولًا على الخريطة لتحديد ${title(field)}. اضغط مطولًا على الدبوس لإلغائه.`;
+  document.querySelector('[name=distance]').value=0;
+  onChange({pending:pending.size>0});
+ }
+ async function refreshMap(refit=false,preview={}){
   if(!map)return;
   const revision=++mapRevision,status=document.querySelector('#request-route-status');
-  const points={pickupPoint:draft.pickupPoint,destinationPoint:draft.destinationPoint};
-  const ready=!!(points.pickupPoint&&points.destinationPoint);
-  status.textContent=ready?'جاري عرض المسار…':points.pickupPoint?'نقطة الالتقاء محددة؛ اختر الوجهة لعرض المسار.':points.destinationPoint?'الوجهة محددة؛ اختر نقطة الالتقاء لعرض المسار.':'اختر نقطة الالتقاء والوجهة لتظهر على الخريطة.';
+  const points={pickupPoint:draft.pickupPoint,destinationPoint:draft.destinationPoint,...preview};
+  const ready=!!(draft.pickupPoint&&draft.destinationPoint)&&!pending.size;
+  status.textContent=pending.size?'جاري تحديد المكان…':ready?'جاري عرض المسار…':points.pickupPoint?'نقطة الالتقاء محددة؛ اختر الوجهة لعرض المسار.':points.destinationPoint?'الوجهة محددة؛ اختر نقطة الالتقاء لعرض المسار.':'اختر نقطة الالتقاء والوجهة من البحث أو بالضغط المطول على الخريطة.';
   try{
-   await map.draw({...points,refit:true});
+   await map.draw({...points,refit,interactivePins:true});
    if(dead||revision!==mapRevision||!ready)return;
    const route=await api('/api/maps/route',{method:'POST',body:JSON.stringify({from:points.pickupPoint,to:points.destinationPoint})});
    if(dead||revision!==mapRevision)return;
-   await map.draw({...points,route,refit:true});
+   await map.draw({...points,route,refit,interactivePins:true});
    if(!dead&&revision===mapRevision)status.textContent=`${Math.max(1,Math.round(route.durationSeconds/60))} دقيقة · ${(route.distanceMeters/1000).toFixed(1)} كم`;
   }catch(e){if(!dead&&revision===mapRevision)status.textContent=e.message;}
  }
- refreshMap();
- function choose(field,auto=false){open?.close();open=openPicker({api,point:draft[field+'Point'],label:draft[field],auto,title:field==='pickup'?'نقطة الالتقاء':'الوجهة',onChoose:(point,label)=>{draft[field+'Point']=point;draft[field]=label;draft.distanceKm=0;onChange();}});}
- for(const field of ['pickup','destination']){
-  searches.push(bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,initialSearch:!draft[field+'Point'],onSelect:async(place,current)=>{const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify(place.placeId?{placeId:place.placeId,sessionToken:place.sessionToken}:{point:{lat:place.lat,lng:place.lng}})});if(!current())return;draft[field+'Point']=d.point;draft[field]=place.label;draft.distanceKm=0;onChange();},onEdit:()=>{draft[field+'Point']=null;draft.distanceKm=0;refreshMap();document.querySelector('.service-step')?.setAttribute('hidden','');}}));
-  document.querySelector('#select-'+field).onclick=()=>choose(field);
+ function setPoint(field,point,label,refit=false){
+  searches[field]?.cancel();pending.delete(field);draft[field+'Point']=point;draft[field]=label;draft.distanceKm=0;
+  document.querySelector('#'+field).value=label;active=field;changed();refreshMap(refit);
  }
- document.querySelector('#auto-pickup').onclick=()=>choose('pickup',true);
- return ()=>{dead=true;searches.forEach(stop=>stop());map?.destroy();open?.close();};
+ async function manual({field,point}){
+  if(dead)return;
+  if(field){versions[field]++;setPoint(field,null,'');return;}
+  field=target();const version=++versions[field];searches[field]?.cancel();
+  if(!Number.isFinite(point.lat)||!Number.isFinite(point.lng)||point.lat<16||point.lat>33||point.lng<34||point.lng>56){toast('حدد موقعًا داخل نطاق الخدمة');return;}
+  point={lat:Number(point.lat.toFixed(6)),lng:Number(point.lng.toFixed(6))};
+  const google=map.config?.provider==='Google',current=()=>!dead&&versions[field]===version;
+  // Google reverse geocoding names the entrance, without moving the chosen pin.
+  // A name lookup failure must not block a real point chosen on the map.
+  if(google)setPoint(field,point,field==='pickup'?'نقطة الالتقاء على الخريطة':'الوجهة على الخريطة');
+  else{pending.add(field);changed();refreshMap(false,{[field+'Point']:point});}
+  try{
+   const d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify({point})});if(!current())return;
+   if(google){draft[field]=d.road||draft[field];document.querySelector('#'+field).value=draft[field];changed();}
+   else setPoint(field,d.point,d.road||pointLabel(d.point));
+  }catch(e){if(!current())return;if(!google){pending.delete(field);changed();refreshMap();}toast(google?'تم تثبيت الدبوس؛ تعذر جلب اسم المكان.':e.message);}
+ }
+ function gps(){open?.close();const version=++versions.pickup;searches.pickup.cancel();if(pending.delete('pickup')){changed();refreshMap();}open=openPicker({api,point:draft.pickupPoint,label:draft.pickup,auto:true,title:'نقطة الالتقاء',onChoose:(point,label)=>{if(!dead&&versions.pickup===version)setPoint('pickup',point,label,true);}});}
+ for(const field of ['pickup','destination']){
+  searches[field]=bindSearch({input:document.querySelector('#'+field),results:document.querySelector('#'+field+'-results'),status:document.querySelector('#'+field+'-search-status'),api,initialSearch:!draft[field+'Point'],onSelect:async(place,current)=>{
+   const version=++versions[field],d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify(place.placeId?{placeId:place.placeId,sessionToken:place.sessionToken}:{point:{lat:place.lat,lng:place.lng}})});
+   if(!current()||dead||version!==versions[field])return;setPoint(field,d.point,place.label,true);
+  },onEdit:()=>{versions[field]++;pending.delete(field);draft[field+'Point']=null;draft.distanceKm=0;changed();refreshMap();}});
+  document.querySelector('#select-'+field).onclick=()=>{active=field;changed();el.scrollIntoView({behavior:'smooth',block:'center'});el.focus({preventScroll:true});};
+ }
+ document.querySelector('#auto-pickup').onclick=gps;
+ map?.enableLongPress(manual);changed();refreshMap();
+ return ()=>{dead=true;Object.values(searches).forEach(stop=>stop());map?.destroy();open?.close();};
 }
 export function openPicker({api,point,label:initialLabel='',auto=false,title,onChoose}){
  const dialog=document.createElement('dialog');dialog.className='map-picker';dialog.dataset.mode='map';

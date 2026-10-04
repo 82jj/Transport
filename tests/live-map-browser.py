@@ -32,19 +32,15 @@ with sync_playwright() as p:
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
   expect(page.locator('#request-map')).to_be_visible()
-  for field,label in [('pickup','الرياض'),('destination','الملك فهد')]:
-   page.locator('#select-'+field).click();expect(page.locator('#picker-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
-   # Real map tiles, with the native tile scale and a single confirmation.
-   page.wait_for_function("() => [...document.querySelectorAll('#picker-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
-   page.locator('#edit-place').click()
-   page.locator('#place-query').fill(label);page.locator('#place-search button').click();expect(page.locator('#place-results .place-result').first).to_be_visible(timeout=30000)
-   page.locator('#place-results .place-result').first.click()
-   try:expect(page.locator('#pick-confirm')).to_be_enabled(timeout=30000)
+  for field,label in [('pickup','الفيصلية الرياض'),('destination','برج المملكة الرياض')]:
+   page.locator('#'+field).fill(label)
+   try:expect(page.locator('#'+field+'-results .place-result').first).to_be_visible(timeout=30000)
    except AssertionError:
-    page.screenshot(path=str(OUT/(name+'-'+field+'-confirmation-failure.png')),full_page=True)
-    print(json.dumps({'field':field,'searchStatus':page.locator('#place-search-status').inner_text(),'mapStatus':page.locator('#pick-status').inner_text(),'blockedRequests':[url.split('?',1)[0] for url in forbidden]},ensure_ascii=False),flush=True)
+    page.screenshot(path=str(OUT/(name+'-'+field+'-search-failure.png')),full_page=True)
+    print(json.dumps({'field':field,'searchStatus':page.locator('#'+field+'-search-status').inner_text(),'blockedRequests':forbidden},ensure_ascii=False),flush=True)
     raise
-   page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+   page.locator('#'+field+'-results .place-result').first.click()
+   expect(page.locator('#request-map [data-location-pin='+field+']')).to_be_visible(timeout=30000)
    expect(page.locator('#request-map')).to_be_visible()
   expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
   page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)

@@ -13,6 +13,29 @@ export function loadLeaflet(){
 }
 const coords=p=>[p.lat,p.lng];
 const textNode=t=>{const s=document.createElement('span');s.textContent=t;return s;};
+// A stationary single-pointer hold selects a point; dragging and pinch zoom do not.
+function bindLongPress(element,pointAt,select){
+ let press,timer;
+ const cancel=()=>{clearTimeout(timer);press=null;};
+ const another=e=>{if(press&&e.pointerId!==press.id)cancel();};
+ const down=e=>{
+  if(e.button!==0||!e.isPrimary){cancel();return;}
+  const pin=e.target.closest('[data-location-pin]');
+  if(!pin&&e.target.closest('button,a,input,[role="button"]'))return;
+  cancel();press={id:e.pointerId,x:e.clientX,y:e.clientY,pin};
+  timer=setTimeout(()=>{if(!press)return;const p=press;press=null;
+   if(p.pin?.isConnected)select({field:p.pin.dataset.locationPin});
+   else{const point=pointAt(p.x,p.y);if(point)select({point});}
+  },600);
+ };
+ const move=e=>{if(press&&e.pointerId===press.id&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>12)cancel();};
+ const up=e=>{if(press&&e.pointerId===press.id)cancel();};
+ const context=e=>{if(!e.target.closest('a'))e.preventDefault();};
+ const key=e=>{const pin=e.target.closest('[data-location-pin]');if(pin&&['Enter',' ','Delete','Backspace'].includes(e.key)){e.preventDefault();select({field:pin.dataset.locationPin});}};
+ element.addEventListener('pointerdown',down,true);element.addEventListener('contextmenu',context);element.addEventListener('keydown',key);
+ window.addEventListener('pointerdown',another,true);window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',up,true);window.addEventListener('pointercancel',cancel,true);window.addEventListener('blur',cancel);
+ return ()=>{cancel();element.removeEventListener('pointerdown',down,true);element.removeEventListener('contextmenu',context);element.removeEventListener('keydown',key);window.removeEventListener('pointerdown',another,true);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',up,true);window.removeEventListener('pointercancel',cancel,true);window.removeEventListener('blur',cancel);};
+}
 export class MapView{
  constructor(element,api,{center,zoom=14}={}){
   this.element=element;this.dead=false;this.layers=[];this.fitted=false;
@@ -29,14 +52,22 @@ export class MapView{
    this.resize=new ResizeObserver(()=>this.map?.invalidateSize({animate:false}));this.resize.observe(element);this.map.invalidateSize({animate:false});
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
- async draw({pickupPoint,destinationPoint,route,location,stale=false,refit=false}={}){
-  await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale,refit});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
-  for(const [p,label]of [[pickupPoint,'نقطة الالتقاء'],[destinationPoint,'الوجهة']])if(p){bounds.push(coords(p));this.layers.push(L.marker(coords(p),{icon:L.divIcon({className:'location-map-marker',html:'<span class="'+(label==='الوجهة'?'destination':'pickup')+'">'+(label==='الوجهة'?'٢':'١')+'</span>',iconSize:[32,40],iconAnchor:[16,40]})}).bindTooltip(textNode(label)).addTo(map));}
+ enableLongPress(select){
+  this.stopPress?.();this.stopPress=bindLongPress(this.element,(x,y)=>{
+   if(this.dead||!this.map)return null;const r=this.element.getBoundingClientRect();
+   if(x<r.left||x>r.right||y<r.top||y>r.bottom)return null;
+   if(this.google)return this.google.pointAt(x-r.left,y-r.top);
+   const p=this.map.containerPointToLatLng([x-r.left,y-r.top]);return{lat:p.lat,lng:p.lng};
+  },select);
+ }
+ async draw({pickupPoint,destinationPoint,route,location,stale=false,refit=false,interactivePins=false}={}){
+  await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale,refit,interactivePins});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
+  for(const [p,label,kind]of [[pickupPoint,'نقطة الالتقاء','pickup'],[destinationPoint,'الوجهة','destination']])if(p){const tag=interactivePins?'button':'span',attributes=interactivePins?' type="button" data-location-pin="'+kind+'" aria-label="إلغاء '+label+' بالضغط المطول"':'';bounds.push(coords(p));this.layers.push(L.marker(coords(p),{keyboard:!interactivePins,icon:L.divIcon({className:'location-map-marker',html:'<'+tag+attributes+' class="'+kind+'">'+(kind==='destination'?'٢':'١')+'</'+tag+'>',iconSize:[32,40],iconAnchor:[16,40]})}).bindTooltip(textNode(label)).addTo(map));}
   if(route?.geometry?.coordinates?.length){const line=L.polyline(route.geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#0875ef',weight:5,opacity:.85}).addTo(map);this.layers.push(line);bounds.push(...line.getLatLngs());}
   if(location){bounds.push(coords(location));this.layers.push(L.circle(coords(location),{radius:Math.min(location.accuracy||10,500),color:stale?'#8995a3':'#00a787',weight:1,fillOpacity:.1}).addTo(map));this.layers.push(L.marker(coords(location),{icon:L.divIcon({className:'captain-map-marker'+(stale?' stale':''),html:'<span aria-label="موقع الكابتن">🚚</span>',iconSize:[34,34],iconAnchor:[17,17]})}).bindTooltip(textNode(stale?'آخر موقع معروف — متأخر':'موقع الكابتن')).addTo(map));}
-  if(bounds.length&&(refit||!this.fitted)){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
+  if(bounds.length&&(refit||!this.fitted&&!interactivePins)){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
  }
- destroy(){this.dead=true;this.resize?.disconnect();if(this.google)this.google.destroy();else this.map?.remove();this.map=null;}
+ destroy(){this.dead=true;this.stopPress?.();this.resize?.disconnect();if(this.google)this.google.destroy();else this.map?.remove();this.map=null;}
 }
 export function routeShell(){return '<section class="real-map-panel"><div class="real-map" data-order-map role="region" aria-label="خريطة الطلب"></div><p class="map-live-status" data-map-status role="status">جاري تحميل الخريطة…</p></section>';}
 export function mountOrderMap({element,api,role,order}){

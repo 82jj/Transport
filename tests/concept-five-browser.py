@@ -25,7 +25,7 @@ def no_overflow(page):
 def fixture(page, role, logged=False, approved=True, orders=None, google=False, google_fail=False):
  map_assets(page)
  if google:page.route('https://maps.googleapis.com/maps/api/js**',lambda route:route.fulfill(content_type='text/javascript',body="window.gm_authFailure();" if google_fail else (ROOT/'tests/google-map-sdk-fixture.js').read_text()))
- state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None,'hold_snap':False,'pending_snap':None,'fail_snap':False,'hold_route':False,'pending_route':None}
+ state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None,'hold_snap':False,'pending_snap':None,'fail_snap':False,'hold_route':False,'pending_route':None,'places':{}}
  def handle(route):
   req=route.request
   if not req.url.startswith('http://127.0.0.1:321'):route.fallback();return
@@ -38,12 +38,14 @@ def fixture(page, role, logged=False, approved=True, orders=None, google=False, 
    query=req.post_data_json['query']
    if query=='بحث متأخر':state['pending_search']=route;return
    if query=='بحث فاشل':status,result=503,{'error':'تعذر البحث الآن'}
-   else:result={'results':[] if query=='بلا نتائج' else [{'id':'p','label':query,'lat':24.7136,'lng':46.6753}]}
-   if google and result.get('results'):result['results']=[{'id':'google-fixture-place','placeId':'google-fixture-place','label':query,'sessionToken':req.post_data_json['sessionToken'],'provider':'Google'}]
+   else:result={'results':[] if query=='بلا نتائج' else [{'id':str(i),'label':query+'، '+city if query=='الفيصلية' else query,'lat':24.7136+i*.002,'lng':46.6753+i*.002} for i,city in enumerate(['الرياض','الدمام','جدة','تبوك','الأحساء'] if query=='الفيصلية' else [''])]}
+   if google and result.get('results'):
+    for i,place in enumerate(result['results']):state['places']['google-fixture-place-'+str(i)]={'lat':place['lat'],'lng':place['lng']}
+    result['results']=[{'id':'google-fixture-place-'+str(i),'placeId':'google-fixture-place-'+str(i),'label':place['label'],'sessionToken':req.post_data_json['sessionToken'],'provider':'Google'} for i,place in enumerate(result['results'])]
   elif path=='maps/snap':
    if state['hold_snap']:state['pending_snap']=route;return
    if state['fail_snap']:status,result=503,{'error':'تعذر تحديد نقطة الوصول'}
-   else:result={'point':req.post_data_json.get('point',{'lat':24.7136,'lng':46.6753}),'road':'شارع اختبار','distanceMeters':10}
+   else:result={'point':req.post_data_json.get('point',state['places'].get(req.post_data_json.get('placeId'),{'lat':24.7136,'lng':46.6753})),'road':'شارع اختبار','distanceMeters':10}
   elif path=='maps/route':
    if state['hold_route']:state['pending_route']=route;return
    data=req.post_data_json;result={'distanceMeters':8200,'durationSeconds':600,'geometry':{'type':'LineString','coordinates':[[data['from']['lng'],data['from']['lat']],[data['to']['lng'],data['to']['lat']]]}}
@@ -75,6 +77,15 @@ def fixture(page, role, logged=False, approved=True, orders=None, google=False, 
   route.fulfill(status=status,content_type='application/json',body=json.dumps(result))
  page.route('**/api/**',handle)
  return state
+
+def hold(page,selector='#request-map',position=None):
+ locator=page.locator(selector);locator.scroll_into_view_if_needed();box=locator.bounding_box()
+ assert box
+ x,y=position or (.28,.38);page.mouse.move(box['x']+box['width']*x,box['y']+box['height']*y)
+ page.mouse.down();page.wait_for_timeout(680);page.mouse.up()
+
+def snap_writes(state):
+ return [body for path,method,body in state['writes'] if path=='maps/snap' and 'point' in body]
 
 args=argparse.ArgumentParser();args.add_argument('--live',action='store_true');args=args.parse_args()
 processes=[]
@@ -148,7 +159,7 @@ try:
    page.locator('#destination').fill('نتيجة حديثة');expect(page.locator('#destination-results')).to_contain_text('نتيجة حديثة')
    st['pending_search'].fulfill(status=200,content_type='application/json',body=json.dumps({'results':[{'label':'بحث متأخر','lat':24.71,'lng':46.67}]}))
    expect(page.locator('#destination-results')).to_contain_text('نتيجة حديثة');expect(page.locator('#destination-results')).not_to_contain_text('بحث متأخر')
-   page.locator('#select-destination').click();expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('.map-picker .close').click()
+   page.locator('#select-destination').click();expect(page.locator('#request-map')).to_be_focused();expect(page.locator('.map-picker')).to_have_count(0)
    expect(page.locator('#destination')).to_have_value('نتيجة حديثة')
    # A road lookup finishing after the address is edited cannot commit an old choice.
    st['hold_snap']=True;page.locator('#destination-results .place-result').click()
@@ -188,7 +199,7 @@ try:
    assert not errors,errors;ctx.close();check(engine+': request, preserved draft, quote invalidation, login, create failure/retry, escaped addresses, tracking and cancellation')
    ctx=browser.new_context(viewport={'width':390,'height':844},geolocation={'latitude':24.7136,'longitude':46.6753,'accuracy':10},permissions=['geolocation'])
    page=ctx.new_page();st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.get_by_role('button',name='طلب جديد',exact=True).click()
-   st['hold_snap']=True;page.locator('#select-pickup').click()
+   st['hold_snap']=True;page.locator('#auto-pickup').click()
    for _ in range(100):
     if st['pending_snap']:break
     page.wait_for_timeout(20)
@@ -196,7 +207,7 @@ try:
    page.locator('.map-picker .close').click();st['hold_snap']=False
    st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'شارع قديم','distanceMeters':10}))
    expect(page.locator('#pickup')).to_have_value('');expect(page.locator('.service-step')).not_to_be_visible()
-   st['fail_snap']=True;page.locator('#select-pickup').click();expect(page.locator('#pick-confirm')).to_have_text('إعادة المحاولة')
+   st['fail_snap']=True;page.locator('#auto-pickup').click();expect(page.locator('#pick-confirm')).to_have_text('إعادة المحاولة')
    st['fail_snap']=False;page.locator('#pick-confirm').click();expect(page.locator('#pick-confirm')).to_have_text('تأكيد موقع الالتقاء');expect(page.locator('#pick-confirm')).to_be_enabled()
    page.locator('.map-picker .close').click();page.locator('#auto-pickup').click()
    expect(page.locator('#picked-name')).to_have_text('موقعي الحالي');expect(page.locator('#pick-confirm')).to_be_enabled();no_overflow(page)
@@ -218,12 +229,69 @@ try:
    assert page.evaluate("document.querySelector('style[nonce]').nonce===document.querySelector('script[nonce]').nonce")
    expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة');expect(page.locator('#request-map')).to_have_attribute('data-map-fit-points','4')
    selections=[body for path,method,body in st['writes'] if path=='maps/snap' and 'placeId' in body];assert len(selections)==2;assert all('sessionToken' in body and 'point' not in body for body in selections)
-   page.locator('#select-pickup').click();expect(page.locator('#pick-confirm')).to_be_enabled();page.locator('.map-picker .close').click();expect(page.locator('#pickup')).to_have_value('مكان من Google')
+   page.locator('#select-pickup').click();expect(page.locator('#request-map')).to_be_focused();expect(page.locator('.map-picker')).to_have_count(0);expect(page.locator('#pickup')).to_have_value('مكان من Google')
    assert not errors,errors;ctx.close();check(engine+': Google SDK contract fixture: Arabic loader once, place ID resolution, attribution, one-confirm map and preserved draft (not real Google imagery)')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();fixture(page,'user',google=True,google_fail=True)
-   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click();page.locator('#select-pickup').click()
+   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click();page.locator('#auto-pickup').click()
    expect(page.locator('#picker-map.map-error')).to_contain_text('Google');expect(page.locator('#pick-confirm')).to_be_disabled();page.locator('.map-picker .close').click();expect(page.locator('#pickup')).to_have_value('')
    ctx.close();check(engine+': Google loader failure disables confirmation and does not save a false location')
+   for google in [False,True]:
+    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+    st=fixture(page,'user',google=google);page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click()
+    expect(page.locator('#request-map')).to_have_attribute('data-map-provider','Google' if google else 'OpenStreetMap')
+    page.evaluate("window.mapBeforeSelection=document.querySelector('#request-map')")
+    page.locator('#pickup').fill('الفيصلية');expect(page.locator('#pickup-results .place-result')).to_have_count(5)
+    assert page.locator('#pickup-results').bounding_box()['y']+page.locator('#pickup-results').bounding_box()['height']<=page.locator('#request-map').bounding_box()['y']
+    page.locator('#pickup-results .place-result').nth(1).click();expect(page.locator('#pickup')).to_have_value('الفيصلية، الدمام')
+    expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(1)
+    assert page.evaluate("window.mapBeforeSelection===document.querySelector('#request-map')")
+    expect(page.locator('#request-map')).to_have_attribute('data-selection-target','destination')
+    hold(page);expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(1)
+    expect(page.locator('.service-step')).to_be_visible();expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
+    first=snap_writes(st)[-1]['point'];hold(page,position=(.7,.38))
+    expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
+    assert snap_writes(st)[-1]['point']!=first
+    assert page.locator('#request-map [data-location-pin]').count()==2
+    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+    hold(page,'#request-map [data-location-pin=pickup]',(.5,.5))
+    expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(0)
+    expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(1)
+    expect(page.locator('#pickup')).to_have_value('');expect(page.locator('#quote')).to_be_empty();expect(page.locator('.service-step')).not_to_be_visible()
+    expect(page.locator('#request-map')).to_have_attribute('data-selection-target','pickup')
+    dest=snap_writes(st)[-1]['point'];hold(page,position=(.22,.7));expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(1)
+    expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
+    routes=[body for path,method,body in st['writes'] if path=='maps/route'];assert routes[-1]['to']==dest
+    # Clear both. Short taps, dragging, map controls and two-pointer zoom cannot select a pin.
+    hold(page,'#request-map [data-location-pin=pickup]',(.5,.5));hold(page,'#request-map [data-location-pin=destination]',(.5,.5))
+    expect(page.locator('#request-map [data-location-pin]')).to_have_count(0);expect(page.locator('#request-map')).to_have_attribute('data-selection-target','pickup')
+    count=len(snap_writes(st));box=page.locator('#request-map').bounding_box();x=box['x']+box['width']*.25;y=box['y']+box['height']*.4
+    page.mouse.click(x,y);page.mouse.move(x,y);page.mouse.down();page.mouse.move(x+45,y+20,steps=5);page.wait_for_timeout(680);page.mouse.up()
+    page.locator('#request-map').dispatch_event('pointerdown',{'pointerId':7,'isPrimary':True,'pointerType':'touch','button':0,'clientX':x,'clientY':y})
+    page.locator('#request-map').dispatch_event('pointerdown',{'pointerId':8,'isPrimary':False,'pointerType':'touch','button':0,'clientX':x+40,'clientY':y})
+    page.wait_for_timeout(680);page.locator('#request-map').dispatch_event('pointerup',{'pointerId':7});page.locator('#request-map').dispatch_event('pointerup',{'pointerId':8})
+    assert len(snap_writes(st))==count;expect(page.locator('#request-map [data-location-pin]')).to_have_count(0)
+    # With neither point chosen, the first hold is pickup and the second is destination.
+    hold(page);expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(1)
+    expect(page.locator('#request-map')).to_have_attribute('data-selection-target','destination')
+    hold(page,position=(.7,.6));expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(1)
+    expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
+    # A late manual lookup cannot resurrect a removed pin or overwrite typed text.
+    st['hold_snap']=True;hold(page,position=(.6,.3))
+    assert st['pending_snap']
+    page.locator('#destination').fill('وجهة بعد الضغط');st['hold_snap']=False
+    st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'اسم متأخر','distanceMeters':10}))
+    expect(page.locator('#destination')).to_have_value('وجهة بعد الضغط');expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(0)
+    expect(page.locator('.service-step')).not_to_be_visible()
+    # Reverse-geocoding names are optional on Google; OSM still validates the nearest road.
+    st['fail_snap']=True;hold(page,position=(.6,.3));st['fail_snap']=False
+    if google:
+     expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(1)
+     expect(page.locator('#destination')).to_have_value('الوجهة على الخريطة');expect(page.locator('#toast')).to_contain_text('تم تثبيت الدبوس')
+    else:expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(0)
+    page.locator('#request-map [data-location-pin=pickup]').focus();page.locator('#request-map [data-location-pin=pickup]').press('Delete')
+    expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(0)
+    no_overflow(page);page.screenshot(path=str(OUT/f'{engine}-inline-long-press-{"google" if google else "osm"}.png'),full_page=True)
+    assert not errors,errors;ctx.close();check(engine+': '+('Google SDK contract fixture' if google else 'real Leaflet')+' inline results, missing-pin inference, hold to set/move/remove, no taps/drag/pinch selection, stale manual lookup ignored')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();st=fixture(page,'captain',logged=True,approved=False);page.goto('http://127.0.0.1:3212/');expect(page.locator('#online')).to_be_disabled();expect(page.locator('body')).to_contain_text('حسابك قيد المراجعة');assert not st['writes'];ctx.close();check(engine+': unapproved captain cannot receive/accept requests')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'captain',logged=True,approved=True,orders=[dict(ORDER)]);page.goto('http://127.0.0.1:3212/');page.locator('#online').click();page.locator('[data-order]').click();expect(page.locator('[data-screen=offer]')).to_be_visible();no_overflow(page);assert not page.locator('.concept-nav').is_visible();page.screenshot(path=str(OUT/f'{engine}-captain-offer-fixture.png'),full_page=True)
