@@ -90,7 +90,7 @@ export function bindLocationFields({draft,api,onChange,toast}){
   document.querySelector('#select-'+field).onclick=()=>{active=field;changed(false);el.scrollIntoView({behavior:'smooth',block:'center'});el.focus({preventScroll:true});};
  }
  document.querySelector('#auto-pickup').onclick=gps;
- map?.enableLongPress(manual);changed(false);refreshMap();
+ map?.enableLongPress(manual,()=>searches[target()]?.cancel());changed(false);refreshMap();
  return ()=>{dead=true;Object.values(searches).forEach(stop=>stop());map?.destroy();open?.close();};
 }
 export function openPicker({api,point,label:initialLabel='',auto=false,title,onChoose}){

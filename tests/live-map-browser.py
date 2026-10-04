@@ -19,6 +19,11 @@ assert not read_only_request('POST',viewport.replace('maps.googleapis.com','maps
 assert not read_only_request('POST',base+'/api/user/orders')
 assert not read_only_request('POST',base+'/api/user/register')
 assert not read_only_request('POST','https://maps.googleapis.com/other-rpc')
+def hold(page,selector='#request-map',position=(.3,.35)):
+ locator=page.locator(selector);locator.scroll_into_view_if_needed();box=locator.bounding_box()
+ assert box
+ page.mouse.move(box['x']+box['width']*position[0],box['y']+box['height']*position[1]);page.mouse.down();page.wait_for_timeout(680);page.mouse.up()
+
 with sync_playwright() as p:
  for name in (['chromium','webkit'] if os.environ.get('TEST_WEBKIT')=='1' else ['chromium']):
   browser=getattr(p,name).launch(headless=True)
@@ -32,6 +37,20 @@ with sync_playwright() as p:
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
   expect(page.locator('#request-map')).to_be_visible()
+  expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
+  page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
+  # Real SDK/container projection and native pointer holds, independent of autocomplete quota.
+  hold(page);expect(page.locator('#request-map [data-location-pin=pickup]')).to_be_visible(timeout=30000)
+  hold(page,position=(.7,.65));expect(page.locator('#request-map [data-location-pin=destination]')).to_be_visible(timeout=30000)
+  expect(page.locator('.service-step')).to_be_visible()
+  hold(page,'#request-map [data-location-pin=pickup]',(.5,.5));expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(0)
+  expect(page.locator('#request-map [data-location-pin=destination]')).to_be_visible()
+  expect(page.locator('#request-map')).to_have_attribute('data-selection-target','pickup')
+  hold(page,position=(.35,.3));expect(page.locator('#request-map [data-location-pin=pickup]')).to_be_visible(timeout=30000)
+  page.screenshot(path=str(OUT/(name+'-manual-pins-real-map.png')),full_page=True)
+  print('PASS',name,'real production map hold sets pickup then destination; holding pickup removes only it; missing pickup restored; no production writes',flush=True)
+  for field in ['pickup','destination']:
+   hold(page,'#request-map [data-location-pin='+field+']',(.5,.5));expect(page.locator('#request-map [data-location-pin='+field+']')).to_have_count(0)
   for field,label in [('pickup','الفيصلية الرياض'),('destination','برج المملكة الرياض')]:
    page.locator('#'+field).fill(label)
    try:expect(page.locator('#'+field+'-results .place-result').first).to_be_visible(timeout=30000)

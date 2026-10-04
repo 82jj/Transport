@@ -14,7 +14,7 @@ export function loadLeaflet(){
 const coords=p=>[p.lat,p.lng];
 const textNode=t=>{const s=document.createElement('span');s.textContent=t;return s;};
 // A stationary single-pointer hold selects a point; dragging and pinch zoom do not.
-function bindLongPress(element,pointAt,select){
+function bindLongPress(element,pointAt,select,start){
  let press,timer;
  const cancel=()=>{clearTimeout(timer);press=null;};
  const another=e=>{if(press&&e.pointerId!==press.id)cancel();};
@@ -22,10 +22,10 @@ function bindLongPress(element,pointAt,select){
   if(e.button!==0||!e.isPrimary){cancel();return;}
   const pin=e.target.closest('[data-location-pin]');
   if(!pin&&e.target.closest('button,a,input,[role="button"]'))return;
-  cancel();press={id:e.pointerId,x:e.clientX,y:e.clientY,pin};
+  const point=pin?null:pointAt(e.clientX,e.clientY);if(!pin&&!point)return;
+  cancel();press={id:e.pointerId,x:e.clientX,y:e.clientY,field:pin?.dataset.locationPin,point};start?.();
   timer=setTimeout(()=>{if(!press)return;const p=press;press=null;
-   if(p.pin?.isConnected)select({field:p.pin.dataset.locationPin});
-   else{const point=pointAt(p.x,p.y);if(point)select({point});}
+   if(p.field)select({field:p.field});else select({point:p.point});
   },600);
  };
  const move=e=>{if(press&&e.pointerId===press.id&&Math.hypot(e.clientX-press.x,e.clientY-press.y)>12)cancel();};
@@ -52,13 +52,13 @@ export class MapView{
    this.resize=new ResizeObserver(()=>this.map?.invalidateSize({animate:false}));this.resize.observe(element);this.map.invalidateSize({animate:false});
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
- enableLongPress(select){
+ enableLongPress(select,start){
   this.stopPress?.();this.stopPress=bindLongPress(this.element,(x,y)=>{
    if(this.dead||!this.map)return null;const r=this.element.getBoundingClientRect();
    if(x<r.left||x>r.right||y<r.top||y>r.bottom)return null;
    if(this.google)return this.google.pointAt(x-r.left,y-r.top);
    const p=this.map.containerPointToLatLng([x-r.left,y-r.top]);return{lat:p.lat,lng:p.lng};
-  },select);
+  },select,start);
  }
  async draw({pickupPoint,destinationPoint,route,location,stale=false,refit=false,interactivePins=false}={}){
   await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale,refit,interactivePins});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
