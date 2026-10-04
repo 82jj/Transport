@@ -25,7 +25,7 @@ def no_overflow(page):
 def fixture(page, role, logged=False, approved=True, orders=None, google=False, google_fail=False):
  map_assets(page)
  if google:page.route('https://maps.googleapis.com/maps/api/js**',lambda route:route.fulfill(content_type='text/javascript',body="window.gm_authFailure();" if google_fail else (ROOT/'tests/google-map-sdk-fixture.js').read_text()))
- state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None,'hold_snap':False,'pending_snap':None,'fail_snap':False}
+ state={'logged':logged,'approved':approved,'orders':list(orders or []),'writes':[],'fail_accept':False,'fail_create':False,'online':False,'pending_search':None,'hold_snap':False,'pending_snap':None,'fail_snap':False,'hold_route':False,'pending_route':None}
  def handle(route):
   req=route.request
   if not req.url.startswith('http://127.0.0.1:321'):route.fallback();return
@@ -45,6 +45,7 @@ def fixture(page, role, logged=False, approved=True, orders=None, google=False, 
    if state['fail_snap']:status,result=503,{'error':'تعذر تحديد نقطة الوصول'}
    else:result={'point':req.post_data_json.get('point',{'lat':24.7136,'lng':46.6753}),'road':'شارع اختبار','distanceMeters':10}
   elif path=='maps/route':
+   if state['hold_route']:state['pending_route']=route;return
    data=req.post_data_json;result={'distanceMeters':8200,'durationSeconds':600,'geometry':{'type':'LineString','coordinates':[[data['from']['lng'],data['from']['lat']],[data['to']['lng'],data['to']['lat']]]}}
   elif path=='services':result=CATALOG
   elif path=='quote':
@@ -106,7 +107,11 @@ try:
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.locator('[data-category=home]').click()
    expect(page.locator('#service option')).to_have_count(5)
-   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('#request-map')).to_have_count(0)
+   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('#request-map')).to_be_visible()
+   expect(page.locator('#request-map')).to_have_attribute('data-map-provider','OpenStreetMap')
+   expect(page.locator('#request-map .location-map-marker')).to_have_count(0)
+   assert not [w for w in st['writes'] if w[0]=='maps/route']
+   assert page.locator('.request-map-panel').evaluate("e=>getComputedStyle(e).borderRadius")=='24px'
    page.screenshot(path=str(OUT/f'{engine}-user-location-search.png'),full_page=True)
    # The destination is directly editable; search results select a real map point.
    expect(page.locator('#destination')).to_be_editable()
@@ -120,12 +125,18 @@ try:
    expect(page.locator('#pickup')).to_have_value('بحث أثناء الحفظ');expect(page.locator('#pickup-results .place-result')).to_contain_text('بحث أثناء الحفظ')
    expect(page.locator('#destination-results')).not_to_be_visible();expect(page.locator('.map-picker')).to_have_count(0)
    expect(page.locator('#destination')).to_have_value('عنوان الاختبار');expect(page.locator('.service-step')).not_to_be_visible()
+   expect(page.locator('#request-map .location-map-marker .destination')).to_have_count(1)
+   expect(page.locator('#request-map .location-map-marker .pickup')).to_have_count(0)
+   assert not [w for w in st['writes'] if w[0]=='maps/route']
    choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');page.locator('#alone').check()
    expect(page.locator('.service-step')).to_be_visible();expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
    # Editing the label must discard the selected point and any existing quote.
    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
    page.locator('#destination').fill('بلا نتائج');expect(page.locator('#quote')).to_be_empty();expect(page.locator('#destination-search-status')).to_contain_text('لم نجد')
-   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('.request-map-panel')).not_to_be_visible()
+   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('.request-map-panel')).to_be_visible()
+   expect(page.locator('#request-map .location-map-marker .pickup')).to_have_count(1)
+   expect(page.locator('#request-map .location-map-marker .destination')).to_have_count(0)
+   expect(page.locator('#request-map .leaflet-overlay-pane path')).to_have_count(0)
    page.locator('#destination').fill('بحث فاشل');expect(page.locator('#destination-search-status')).to_contain_text('تعذر البحث الآن')
    page.locator('#destination').fill('بحث متأخر');expect(page.locator('#destination-search-status')).to_contain_text('جاري البحث')
    page.wait_for_function('document.querySelector("#destination-search-status").textContent.includes("جاري البحث")')
@@ -149,6 +160,18 @@ try:
    expect(page.locator('#destination')).to_have_value('عنوان جديد');expect(page.locator('.service-step')).not_to_be_visible()
    choose_point(page,'destination','عنوان الاختبار')
    check(engine+': search-first locations, direct keyboard selection, one-tap map approval, route and services after both points, cleared quote/point on edit, stale search/snap ignored and cancel preserves draft')
+   # A late route must not restore a cleared destination marker or old route.
+   st['hold_route']=True;page.locator('[data-category=light]').click()
+   for _ in range(100):
+    if st['pending_route']:break
+    page.wait_for_timeout(20)
+   assert st['pending_route'];page.locator('#destination').fill('وجهة معدلة')
+   expect(page.locator('#request-map .location-map-marker .destination')).to_have_count(0)
+   st['hold_route']=False;st['pending_route'].fulfill(status=200,content_type='application/json',body=json.dumps({'distanceMeters':8200,'durationSeconds':600,'geometry':{'type':'LineString','coordinates':[[46.6753,24.7136],[46.69,24.72]]}}))
+   expect(page.locator('#request-route-status')).to_contain_text('نقطة الالتقاء محددة')
+   expect(page.locator('#request-map .leaflet-overlay-pane path')).to_have_count(0)
+   expect(page.locator('.service-step')).not_to_be_visible()
+   choose_point(page,'destination','عنوان الاختبار')
    page.locator('[data-category=heavy]').click();expect(page.locator('#pickup')).to_have_value('موقع خاص <img src=x onerror=alert(1)>');expect(page.locator('#service option')).to_have_count(3)
    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
    choose_point(page,'destination','وجهة أخرى');expect(page.locator('#quote')).to_be_empty()
@@ -185,6 +208,10 @@ try:
    page.goto('http://127.0.0.1:3211/');expect(page.locator('[data-map-provider-label]')).to_have_text('Google (تجريبي)');page.locator('[data-category=light]').click()
    page.locator('#pickup').fill('مكان من Google');expect(page.locator('#pickup-results .maps-attribution')).to_have_text('Google Maps')
    page.locator('#pickup-results .place-result').click();expect(page.locator('#pickup-results')).not_to_be_visible()
+   expect(page.locator('#request-map .google-location-marker.pickup')).to_have_count(1)
+   expect(page.locator('#request-map .google-location-marker.destination')).to_have_count(0)
+   expect(page.locator('#request-map')).to_have_attribute('data-map-fit-points','1')
+   assert not [w for w in st['writes'] if w[0]=='maps/route']
    choose_point(page,'destination','وجهة Google')
    expect(page.locator('#request-map')).to_have_attribute('data-map-provider','Google');expect(page.locator('#request-map')).to_have_attribute('data-map-ready','true');expect(page.locator('.service-step')).to_be_visible()
    assert len(sdk)==1;assert 'language=ar' in sdk[0];assert 'region=SA' in sdk[0]

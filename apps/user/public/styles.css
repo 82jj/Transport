@@ -69,7 +69,8 @@
 .user-app .itinerary-form .place-result{padding:16px 8px;min-height:72px}
 .user-app .current-location{display:flex;align-items:center;gap:10px;width:auto!important;margin:16px 0 0 26px!important;padding:10px 0!important;color:#182b3b;font-size:22px!important}
 .user-app .current-location span{font-size:15px}
-.user-app .request-map-panel{margin:10px 0 20px;border:0;border-radius:14px;background:#f5f6f7}
+.user-app .request-map-panel{margin:10px 0 20px;border:1px solid #e3e9ef;border-radius:24px;background:#f5f6f7;overflow:hidden}
+.user-app #request-map{height:clamp(260px,38dvh,400px);min-height:260px}
 .user-app .request-map-panel .map-help{font-size:14px;text-align:center;padding:10px}
 .service-step[hidden],.request-map-panel[hidden]{display:none!important}
 .user-app[data-screen=request] footer{display:none}
