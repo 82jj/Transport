@@ -29,12 +29,12 @@ export class MapView{
    this.resize=new ResizeObserver(()=>this.map?.invalidateSize({animate:false}));this.resize.observe(element);this.map.invalidateSize({animate:false});
   }).catch(e=>{if(!this.dead){element.replaceChildren(textNode(e.message));element.classList.add('map-error');}throw e;});
  }
- async draw({pickupPoint,destinationPoint,route,location,stale=false}={}){
-  await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
+ async draw({pickupPoint,destinationPoint,route,location,stale=false,refit=false}={}){
+  await this.ready;if(this.dead||!this.map)return;if(this.google)return this.google.draw({pickupPoint,destinationPoint,route,location,stale,refit});const {map,L}=this;this.layers.forEach(x=>x.remove());this.layers=[];const bounds=[];
   for(const [p,label]of [[pickupPoint,'نقطة الالتقاء'],[destinationPoint,'الوجهة']])if(p){bounds.push(coords(p));this.layers.push(L.marker(coords(p),{icon:L.divIcon({className:'location-map-marker',html:'<span class="'+(label==='الوجهة'?'destination':'pickup')+'">'+(label==='الوجهة'?'٢':'١')+'</span>',iconSize:[32,40],iconAnchor:[16,40]})}).bindTooltip(textNode(label)).addTo(map));}
   if(route?.geometry?.coordinates?.length){const line=L.polyline(route.geometry.coordinates.map(c=>[c[1],c[0]]),{color:'#0875ef',weight:5,opacity:.85}).addTo(map);this.layers.push(line);bounds.push(...line.getLatLngs());}
   if(location){bounds.push(coords(location));this.layers.push(L.circle(coords(location),{radius:Math.min(location.accuracy||10,500),color:stale?'#8995a3':'#00a787',weight:1,fillOpacity:.1}).addTo(map));this.layers.push(L.marker(coords(location),{icon:L.divIcon({className:'captain-map-marker'+(stale?' stale':''),html:'<span aria-label="موقع الكابتن">🚚</span>',iconSize:[34,34],iconAnchor:[17,17]})}).bindTooltip(textNode(stale?'آخر موقع معروف — متأخر':'موقع الكابتن')).addTo(map));}
-  if(bounds.length&&!this.fitted){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
+  if(bounds.length&&(refit||!this.fitted)){map.fitBounds(L.latLngBounds(bounds),{padding:[28,28],maxZoom:16,animate:false});this.fitted=true;}
  }
  destroy(){this.dead=true;this.resize?.disconnect();if(this.google)this.google.destroy();else this.map?.remove();this.map=null;}
 }

@@ -31,7 +31,7 @@ with sync_playwright() as p:
    route.continue_()
   page.route('**/*',guard)
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
-  expect(page.locator('#request-map')).to_have_count(0)
+  expect(page.locator('#request-map')).to_be_visible()
   for field,label in [('pickup','الرياض'),('destination','الملك فهد')]:
    page.locator('#select-'+field).click();expect(page.locator('#picker-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
    # Real map tiles, with the native tile scale and a single confirmation.
@@ -45,6 +45,7 @@ with sync_playwright() as p:
     print(json.dumps({'field':field,'searchStatus':page.locator('#place-search-status').inner_text(),'mapStatus':page.locator('#pick-status').inner_text(),'blockedRequests':[url.split('?',1)[0] for url in forbidden]},ensure_ascii=False),flush=True)
     raise
    page.locator('#pick-confirm').click();expect(page.locator('.map-picker')).to_have_count(0)
+   expect(page.locator('#request-map')).to_be_visible()
   expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
   page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
   expect(page.locator('.service-step')).to_be_visible()
