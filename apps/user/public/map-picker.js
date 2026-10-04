@@ -40,11 +40,10 @@ export function bindLocationFields({draft,api,onChange,toast}){
  let dead=false,open=null,mapRevision=0,active='destination';const searches={},versions={pickup:0,destination:0},pending=new Set();
  const title=field=>field==='pickup'?'الالتقاء':'الوجهة';
  const target=()=>!draft.pickupPoint?'pickup':!draft.destinationPoint?'destination':active;
- function changed(){
+ function changed(invalidate=true){
   const field=target();el.dataset.selectionTarget=field;
   document.querySelector('#request-map-hint').textContent=`اضغط مطولًا على الخريطة لتحديد ${title(field)}. اضغط مطولًا على الدبوس لإلغائه.`;
-  document.querySelector('[name=distance]').value=0;
-  onChange({pending:pending.size>0});
+  if(invalidate){document.querySelector('[name=distance]').value=0;onChange({pending:pending.size>0});}
  }
  async function refreshMap(refit=false,preview={}){
   if(!map)return;
@@ -88,10 +87,10 @@ export function bindLocationFields({draft,api,onChange,toast}){
    const version=++versions[field],d=await api('/api/maps/snap',{method:'POST',body:JSON.stringify(place.placeId?{placeId:place.placeId,sessionToken:place.sessionToken}:{point:{lat:place.lat,lng:place.lng}})});
    if(!current()||dead||version!==versions[field])return;setPoint(field,d.point,place.label,true);
   },onEdit:()=>{versions[field]++;pending.delete(field);draft[field+'Point']=null;draft.distanceKm=0;changed();refreshMap();}});
-  document.querySelector('#select-'+field).onclick=()=>{active=field;changed();el.scrollIntoView({behavior:'smooth',block:'center'});el.focus({preventScroll:true});};
+  document.querySelector('#select-'+field).onclick=()=>{active=field;changed(false);el.scrollIntoView({behavior:'smooth',block:'center'});el.focus({preventScroll:true});};
  }
  document.querySelector('#auto-pickup').onclick=gps;
- map?.enableLongPress(manual);changed();refreshMap();
+ map?.enableLongPress(manual);changed(false);refreshMap();
  return ()=>{dead=true;Object.values(searches).forEach(stop=>stop());map?.destroy();open?.close();};
 }
 export function openPicker({api,point,label:initialLabel='',auto=false,title,onChoose}){
