@@ -19,7 +19,7 @@ for(const role of ['user','captain','admin']){
  test(`${role}: independent HTML, script, stylesheet and install identity`,async()=>{
   const health=await call(role,'/healthz');assert.equal(health.data.app,`transport-${role}`);assert.equal(health.data.version,'0.3.0');
   const response=await fetch(paths[role]+'/'),html=await response.text();assert.equal(response.status,200);assert.match(html,new RegExp(`data-app="transport-${role}"`));
-  const assetVersion=role==='admin'?'0.3.0':role==='user'?'location-flow-3':'concept-5.1';
+  const assetVersion=role==='admin'?'0.3.0':role==='user'?'service-dock-1':'concept-5.1';
   const scriptSources=[...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(m=>m[1]);
   assert.deepEqual(scriptSources,[`/${role}.js?v=${assetVersion}`]);
   assert.ok(html.includes(`href="/styles.css?v=${assetVersion}"`));
@@ -28,7 +28,7 @@ for(const role of ['user','captain','admin']){
   assert.doesNotMatch(html,/اختر طريقة الدخول|ثلاث واجهات|data-r=|src="\/app.js/);
   for(const asset of [`/${role}.js?v=${assetVersion}`,`/styles.css?v=${assetVersion}`,`/base.css?v=${assetVersion}`,'/manifest.webmanifest','/icon.svg']){const r=await fetch(paths[role]+asset);assert.equal(r.status,200,asset);assert.equal(r.headers.get('cache-control'),'no-store');}
   const manifest=await (await fetch(paths[role]+'/manifest.webmanifest')).json();assert.equal(manifest.id,`/${role}-application`);
-  const files=await readdir(new URL(`../apps/${role}/public`,import.meta.url));assert.deepEqual(files.sort(),['base.css','icon.svg','index.html','manifest.webmanifest',`${role}.js`,'styles.css',...(role==='captain'?['onboarding.js','onboarding.css','gps.js','maps.js','maps.css','google-map.js']:role==='user'?['maps.js','maps.css','google-map.js','map-picker.js','pickup-side.webp','flatbed-side.webp','water-tanker-side.webp']:[])].sort());
+  const files=await readdir(new URL(`../apps/${role}/public`,import.meta.url));assert.deepEqual(files.sort(),['base.css','icon.svg','index.html','manifest.webmanifest',`${role}.js`,'styles.css',...(role==='captain'?['onboarding.js','onboarding.css','gps.js','maps.js','maps.css','google-map.js']:role==='user'?['maps.js','maps.css','google-map.js','map-picker.js','pickup-side.webp','flatbed-side.webp','water-tanker-side.webp','booking.css','icons.js','wasil-wordmark.webp','vehicles','fonts']:[])].sort());
  });
  test(`${role}: foreign files, query-mode switching and API paths are isolated`,async()=>{for(const other of ['user','captain','admin'].filter(x=>x!==role)){for(const path of [`/${other}.html`,`/${other}.js`,`/${other}`,`/apps/${other}/public/index.html`,`/api/${other}/orders`]){const r=await fetch(paths[role]+path);assert.equal(r.status,404,`${role}${path}`);}const body=await (await fetch(paths[role]+`/?APP_MODE=${other}&role=${other}`)).text();assert.match(body,new RegExp(`data-app="transport-${role}"`));}for(const path of ['/app.js','/server.js','/package.json','/.env','/app.json','/api/orders'])assert.equal((await fetch(paths[role]+path)).status,404,path);});
  test(`${role}: unauthenticated private reads and cross-origin writes blocked`,async()=>{assert.equal((await call(role,`/api/${role}/orders`)).status,401);const r=await call(role,'/api/quote','POST',{serviceId:'dyna',distanceKm:8},null,{Origin:'https://foreign.example'});assert.equal(r.status,403);});

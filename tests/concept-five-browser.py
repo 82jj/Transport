@@ -9,10 +9,7 @@ from maps_browser_support import map_assets,choose_point
 
 ROOT=Path(__file__).resolve().parents[1]
 OUT=ROOT/'artifacts'/'concept-five'; OUT.mkdir(parents=True,exist_ok=True)
-CATALOG={
- 'light':[{'id':'pickup-s','name':'بيك أب صغير','base':35,'km':3.2},{'id':'pickup-d','name':'بيك أب غمارتين','base':45,'km':3.6},{'id':'pickup-l','name':'بيك أب حمولة كبيرة','base':55,'km':4}],
- 'heavy':[{'id':'dyna','name':'دينا','base':90,'km':6},{'id':'flatbed','name':'سطحة','base':110,'km':7},{'id':'trailer','name':'تريلة','base':220,'km':10}],
- 'home':[{'id':'gas','name':'غاز','base':25,'km':1.5},{'id':'sweet-water','name':'ماء حلو','base':30,'km':1.5},{'id':'water-s','name':'وايت ماء صغير','base':90,'km':2},{'id':'water-m','name':'وايت ماء متوسط','base':130,'km':2.5},{'id':'water-l','name':'وايت ماء كبير','base':180,'km':3}]}
+CATALOG=json.loads((ROOT/'apps/api/catalog.json').read_text())
 ORDER={'id':'browser-test-001','serviceId':'pickup-s','service':'بيك أب صغير','category':'light','pickup':'نقطة استلام الاختبار','destination':'وجهة تسليم الاختبار','distanceKm':8.2,'price':62,'total':62,'status':'searching','createdAt':'2026-10-03T10:00:00Z','captainAssigned':False,'unaccompanied':True}
 REPORT=[]
 
@@ -108,21 +105,57 @@ try:
     fixture(page,'user');page.goto('http://127.0.0.1:3211/');expect(page.locator('.category-card')).to_have_count(3)
     images=page.locator('.category-card img.service-art')
     expect(images).to_have_count(3)
-    assert images.evaluate_all('(items)=>items.map(image=>image.getAttribute("src"))')==['/pickup-side.webp','/flatbed-side.webp','/water-tanker-side.webp']
+    assert images.evaluate_all('(items)=>items.map(image=>image.getAttribute("src"))')==['/vehicles/pickup-medium.webp','/vehicles/flatbed.webp','/vehicles/water.webp']
     page.wait_for_function('() => [...document.querySelectorAll(".category-card img.service-art")].every(image => image.complete && image.naturalWidth > 0)')
     no_overflow(page)
     assert 'ثلاث واجهات' not in page.inner_text('body')
     if width==390:page.screenshot(path=str(OUT/f'{engine}-user-home.png'),full_page=True)
+    page.locator('[data-category=heavy]').click()
+    expect(page.locator('.service-step')).to_be_visible();expect(page.locator('.vehicle-choice')).to_have_count(3)
+    page.locator('.vehicle-choice').filter(has=page.locator('[value=flatbed]')).click()
+    expect(page.locator('[value=flatbed]')).to_be_checked()
+    page.wait_for_function('() => [...document.querySelectorAll(".vehicle-choice img")].every(i=>i.complete&&i.naturalWidth>0)')
+    no_overflow(page)
+    if width==390:page.screenshot(path=str(OUT/f'{engine}-service-dock-heavy.png'),full_page=True)
     assert not errors,errors;ctx.close()
    check(engine+': user responsive 320/390/430/1024, three illustrated cards, no role chooser')
+   ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();st=fixture(page,'user')
+   page.goto('http://127.0.0.1:3211/');page.locator('[data-category=light]').click()
+   expect(page.locator('.vehicle-choice')).to_have_count(4)
+   expect(page.locator('#pickup')).to_have_value('');expect(page.locator('#destination')).to_have_value('')
+   page.evaluate("window.bookingMap=document.querySelector('#request-map')")
+   for service_id in ['pickup-s','pickup-d','pickup-l','pickup-standard']:
+    page.locator('.vehicle-choice').filter(has=page.locator('[value='+service_id+']')).click()
+    expect(page.locator('[value='+service_id+']')).to_be_checked()
+   page.locator('[data-category=heavy]').click()
+   for service_id in ['dyna','flatbed','trailer']:
+    page.locator('.vehicle-choice').filter(has=page.locator('[value='+service_id+']')).click()
+    expect(page.locator('[value='+service_id+']')).to_be_checked()
+   page.locator('[data-category=home]').click();expect(page.locator('.vehicle-choice')).to_have_count(5)
+   for service_id in ['gas','sweet-water','water-s','water-m','water-l']:
+    page.locator('.vehicle-choice').filter(has=page.locator('[value='+service_id+']')).click()
+    expect(page.locator('[value='+service_id+']')).to_be_checked()
+   page.locator('[data-category=light]').click();expect(page.locator('[value=pickup-standard]')).to_be_checked()
+   assert page.evaluate("window.bookingMap===document.querySelector('#request-map')")
+   assert not [w for w in st['writes'] if w[0] in ['quote','user/orders']]
+   choose_point(page,'pickup','التقاء الاختبار');choose_point(page,'destination','وجهة الاختبار')
+   page.get_by_role('button',name='متابعة',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+   assert [w[2]['serviceId'] for w in st['writes'] if w[0]=='quote'][-1]=='pickup-standard'
+   page.locator('.vehicle-choice').filter(has=page.locator('[value=pickup-l]')).click();expect(page.locator('#quote')).to_be_empty()
+   page.locator('[data-category=home]').click();expect(page.locator('[value=water-l]')).to_be_checked()
+   expect(page.locator('#pickup')).to_have_value('التقاء الاختبار');expect(page.locator('#destination')).to_have_value('وجهة الاختبار')
+   assert page.evaluate("window.bookingMap===document.querySelector('#request-map')")
+   page.get_by_role('button',name='متابعة',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+   assert [w[2]['serviceId'] for w in st['writes'] if w[0]=='quote'][-1]=='water-l'
+   ctx.close();check(engine+': all 12 subtype radios selectable before locations; per-category selection, same map and coordinates preserved; correct quote payload and invalidation')
    ctx=browser.new_context(viewport={'width':390,'height':844});page=ctx.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
    st=fixture(page,'user');page.goto('http://127.0.0.1:3211/');page.locator('[data-category=home]').click()
-   expect(page.locator('#service option')).to_have_count(5)
-   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('#request-map')).to_be_visible()
+   expect(page.locator('[name=serviceId]')).to_have_count(5)
+   expect(page.locator('.service-step')).to_be_visible();expect(page.locator('#request-map')).to_be_visible()
    expect(page.locator('#request-map')).to_have_attribute('data-map-provider','OpenStreetMap')
    expect(page.locator('#request-map .location-map-marker')).to_have_count(0)
    assert not [w for w in st['writes'] if w[0]=='maps/route']
-   assert page.locator('.request-map-panel').evaluate("e=>getComputedStyle(e).borderRadius")=='24px'
+   assert page.locator('.request-map-panel').evaluate("e=>getComputedStyle(e).borderRadius")=='0px'
    page.screenshot(path=str(OUT/f'{engine}-user-location-search.png'),full_page=True)
    # The destination is directly editable; search results select a real map point.
    expect(page.locator('#destination')).to_be_editable()
@@ -135,16 +168,16 @@ try:
    st['hold_snap']=False;st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'شارع','distanceMeters':10}))
    expect(page.locator('#pickup')).to_have_value('بحث أثناء الحفظ');expect(page.locator('#pickup-results .place-result')).to_contain_text('بحث أثناء الحفظ')
    expect(page.locator('#destination-results')).not_to_be_visible();expect(page.locator('.map-picker')).to_have_count(0)
-   expect(page.locator('#destination')).to_have_value('عنوان الاختبار');expect(page.locator('.service-step')).not_to_be_visible()
+   expect(page.locator('#destination')).to_have_value('عنوان الاختبار');expect(page.locator('.service-step')).to_be_visible()
    expect(page.locator('#request-map .location-map-marker .destination')).to_have_count(1)
    expect(page.locator('#request-map .location-map-marker .pickup')).to_have_count(0)
    assert not [w for w in st['writes'] if w[0]=='maps/route']
-   choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');page.locator('#alone').check()
+   choose_point(page,'pickup','موقع خاص <img src=x onerror=alert(1)>');page.locator('.request-options summary').click();page.locator('#alone').check()
    expect(page.locator('.service-step')).to_be_visible();expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
    # Editing the label must discard the selected point and any existing quote.
-   page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+   page.get_by_role('button',name='متابعة',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
    page.locator('#destination').fill('بلا نتائج');expect(page.locator('#quote')).to_be_empty();expect(page.locator('#destination-search-status')).to_contain_text('لم نجد')
-   expect(page.locator('.service-step')).not_to_be_visible();expect(page.locator('.request-map-panel')).to_be_visible()
+   expect(page.locator('.service-step')).to_be_visible();expect(page.locator('.request-map-panel')).to_be_visible()
    expect(page.locator('#request-map .location-map-marker .pickup')).to_have_count(1)
    expect(page.locator('#request-map .location-map-marker .destination')).to_have_count(0)
    expect(page.locator('#request-map .leaflet-overlay-pane path')).to_have_count(0)
@@ -168,11 +201,11 @@ try:
     page.wait_for_timeout(20)
    assert st['pending_snap'];page.locator('#destination').fill('عنوان جديد')
    st['hold_snap']=False;st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'شارع قديم','distanceMeters':10}))
-   expect(page.locator('#destination')).to_have_value('عنوان جديد');expect(page.locator('.service-step')).not_to_be_visible()
+   expect(page.locator('#destination')).to_have_value('عنوان جديد');expect(page.locator('.service-step')).to_be_visible()
    choose_point(page,'destination','عنوان الاختبار')
-   check(engine+': search-first locations, direct keyboard selection, one-tap map approval, route and services after both points, cleared quote/point on edit, stale search/snap ignored and cancel preserves draft')
+   check(engine+': search-first locations, direct keyboard selection, one-tap map approval, route after both points, service choices always available, cleared quote/point on edit, stale search/snap ignored and cancel preserves draft')
    # A late route must not restore a cleared destination marker or old route.
-   st['hold_route']=True;page.locator('[data-category=light]').click()
+   st['hold_route']=True;choose_point(page,'destination','مسار متأخر');page.locator('[data-category=light]').click()
    for _ in range(100):
     if st['pending_route']:break
     page.wait_for_timeout(20)
@@ -181,12 +214,12 @@ try:
    st['hold_route']=False;st['pending_route'].fulfill(status=200,content_type='application/json',body=json.dumps({'distanceMeters':8200,'durationSeconds':600,'geometry':{'type':'LineString','coordinates':[[46.6753,24.7136],[46.69,24.72]]}}))
    expect(page.locator('#request-route-status')).to_contain_text('نقطة الالتقاء محددة')
    expect(page.locator('#request-map .leaflet-overlay-pane path')).to_have_count(0)
-   expect(page.locator('.service-step')).not_to_be_visible()
+   expect(page.locator('.service-step')).to_be_visible()
    choose_point(page,'destination','عنوان الاختبار')
-   page.locator('[data-category=heavy]').click();expect(page.locator('#pickup')).to_have_value('موقع خاص <img src=x onerror=alert(1)>');expect(page.locator('#service option')).to_have_count(3)
-   page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+   page.locator('[data-category=heavy]').click();expect(page.locator('#pickup')).to_have_value('موقع خاص <img src=x onerror=alert(1)>');expect(page.locator('[name=serviceId]')).to_have_count(3)
+   page.get_by_role('button',name='متابعة',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
    choose_point(page,'destination','وجهة أخرى');expect(page.locator('#quote')).to_be_empty()
-   page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();page.locator('#confirm-order').click();expect(page.locator('#account')).to_be_visible()
+   page.get_by_role('button',name='متابعة',exact=True).click();page.locator('#confirm-order').click();expect(page.locator('#account')).to_be_visible()
    page.locator('#account [name=email]').fill('fixture@example.test');page.locator('#account [name=password]').fill('browser-test-password-not-production');page.locator('#account [type=submit]').click();expect(page.locator('#confirm-order')).to_be_visible()
    st['fail_create']=True;page.locator('#confirm-order').click();expect(page.locator('#toast')).to_contain_text('خطأ تجريبي');expect(page.locator('#confirm-order')).to_be_enabled();st['fail_create']=False
    page.locator('#confirm-order').click();expect(page.locator('[data-screen=track]')).to_be_visible();no_overflow(page);assert len(st['orders'])==1
@@ -206,7 +239,7 @@ try:
    assert st['pending_snap'];expect(page.locator('#pick-confirm')).to_be_disabled()
    page.locator('.map-picker .close').click();st['hold_snap']=False
    st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'شارع قديم','distanceMeters':10}))
-   expect(page.locator('#pickup')).to_have_value('');expect(page.locator('.service-step')).not_to_be_visible()
+   expect(page.locator('#pickup')).to_have_value('');expect(page.locator('.service-step')).to_be_visible()
    st['fail_snap']=True;page.locator('#auto-pickup').click();expect(page.locator('#pick-confirm')).to_have_text('إعادة المحاولة')
    st['fail_snap']=False;page.locator('#pick-confirm').click();expect(page.locator('#pick-confirm')).to_have_text('تأكيد موقع الالتقاء');expect(page.locator('#pick-confirm')).to_be_enabled()
    page.locator('.map-picker .close').click();page.locator('#auto-pickup').click()
@@ -252,11 +285,11 @@ try:
     expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
     assert snap_writes(st)[-1]['point']!=first
     assert page.locator('#request-map [data-location-pin]').count()==2
-    page.get_by_role('button',name='عرض السعر التجريبي',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
+    page.get_by_role('button',name='متابعة',exact=True).click();expect(page.locator('#confirm-order')).to_be_visible()
     hold(page,'#request-map [data-location-pin=pickup]',(.5,.5))
     expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(0)
     expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(1)
-    expect(page.locator('#pickup')).to_have_value('');expect(page.locator('#quote')).to_be_empty();expect(page.locator('.service-step')).not_to_be_visible()
+    expect(page.locator('#pickup')).to_have_value('');expect(page.locator('#quote')).to_be_empty();expect(page.locator('.service-step')).to_be_visible()
     expect(page.locator('#request-map')).to_have_attribute('data-selection-target','pickup')
     dest=snap_writes(st)[-1]['point'];hold(page,position=(.22,.7));expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(1)
     expect(page.locator('#request-route-status')).to_contain_text('10 دقيقة')
@@ -281,7 +314,7 @@ try:
     page.locator('#destination').fill('وجهة بعد الضغط');st['hold_snap']=False
     st['pending_snap'].fulfill(status=200,content_type='application/json',body=json.dumps({'point':{'lat':24.7136,'lng':46.6753},'road':'اسم متأخر','distanceMeters':10}))
     expect(page.locator('#destination')).to_have_value('وجهة بعد الضغط');expect(page.locator('#request-map [data-location-pin=destination]')).to_have_count(0)
-    expect(page.locator('.service-step')).not_to_be_visible()
+    expect(page.locator('.service-step')).to_be_visible()
     # Reverse-geocoding names are optional on Google; OSM still validates the nearest road.
     st['fail_snap']=True;hold(page,position=(.6,.3));st['fail_snap']=False
     if google:
