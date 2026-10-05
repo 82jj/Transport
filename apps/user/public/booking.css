@@ -27,7 +27,7 @@
 .user-app[data-screen=request] .place-result b{font-size:15px;font-weight:500;line-height:1.4}
 .user-app[data-screen=request] .place-result small{font-size:12px;line-height:1.4;margin:2px 0 0}
 .user-app[data-screen=request] .request-map-panel{position:relative;margin:0;border:0;border-radius:0;background:#e9eff5}
-.user-app[data-screen=request] #request-map{height:clamp(220px,calc(100svh - 588px),450px);min-height:220px;margin:0;border-radius:0}
+.user-app[data-screen=request] #request-map{height:clamp(220px,calc(100svh - 578px),450px);min-height:220px;margin:0;border-radius:0}
 .user-app[data-screen=request]:has(.location-results:not([hidden])) #request-map{height:clamp(220px,calc(100svh - 670px),355px);min-height:220px}
 .user-app[data-screen=request] .request-map-panel .current-location{position:absolute;left:14px;bottom:42px;z-index:2;display:grid;place-items:center;width:44px!important;height:44px;min-height:44px;padding:9px!important;margin:0!important;background:white;border:1px solid #e4ebf3;border-radius:12px;color:#173d64;box-shadow:0 3px 10px #12345012}
 .request-map-panel .current-location .icon{width:25px;height:25px}
@@ -78,3 +78,10 @@
 .user-app[data-screen=request] .vehicle-choice{min-height:84px;padding-top:12px;padding-bottom:5px}
 .user-app[data-screen=request] .vehicle-choice:has(input:checked){padding-top:11px;padding-bottom:4px}
 .user-app[data-screen=request] .vehicle-choice img{height:49px}
+
+.dock-heading .request-options{position:relative;margin:0 0 8px}
+.dock-heading .request-options .accompaniment{position:absolute;left:0;top:25px;z-index:4;width:250px;box-shadow:0 4px 18px #09284c22}
+
+.vehicle-choices legend{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.vehicle-choices legend small{font-size:11px;font-weight:400;color:#61788f}
+.vehicle-list[data-count="4"],.vehicle-list[data-count="5"]{grid-auto-columns:calc((100% - 20px)/3.2)}
