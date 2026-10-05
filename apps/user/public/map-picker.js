@@ -1,11 +1,14 @@
+import {icon} from './icons.js';
 import {MapView} from './maps.js';
 export const pointLabel=p=>p?'موقع محدد على الخريطة':'';
-const pin='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>';
+const pin=icon('pin');
+// getRandomValues is also available in the local HTTP design preview.
+const searchToken=()=>crypto.randomUUID?.()||Array.from(crypto.getRandomValues(new Uint8Array(16)),n=>n.toString(16).padStart(2,'0')).join('');
 export function locationFields(d,esc){
- return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><label for="${field}" class="visually-hidden">${title}</label><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}<button type="button" class="text-button current-location" id="auto-pickup">⌖ <span>استخدام موقعي الحالي للالتقاء</span></button>${['pickup','destination'].map(field=>`<div class="location-results" id="${field}-results" hidden></div>`).join('')}</div><section class="request-map-panel"><div class="real-map" id="request-map" role="region" aria-label="تحديد الالتقاء والوجهة على الخريطة" tabindex="0" aria-describedby="request-map-hint"></div><p class="map-help map-hint" id="request-map-hint"></p><p class="map-help" id="request-route-status" role="status">جاري تحميل الخريطة…</p></section><input name="distance" type="hidden" value="${d.distanceKm||0}">`;
+ return `<div class="location-form itinerary-form">${[['pickup','نقطة الالتقاء','مكان الالتقاء'],['destination','الوجهة','إلى أين؟']].map(([field,title,hint])=>`<div class="location-field" data-location="${field}"><div class="location-input-row"><i class="location-dot ${field}" aria-hidden="true"></i><label for="${field}">${field==='pickup'?'الالتقاء':title}</label><input id="${field}" name="${field}" value="${esc(d[field])}" placeholder="${hint}" autocomplete="off" maxlength="120" required aria-describedby="${field}-search-status" aria-controls="${field}-results" aria-expanded="false"><button type="button" class="map-select" id="select-${field}" aria-label="${field==='pickup'?'تحديد الالتقاء':'تحديد الوجهة'} على الخريطة">${pin}</button></div><p class="search-status" id="${field}-search-status" role="status" aria-live="polite"></p></div>`).join('')}${['pickup','destination'].map(field=>`<div class="location-results" id="${field}-results" hidden></div>`).join('')}</div><section class="request-map-panel"><button type="button" class="current-location" id="auto-pickup" aria-label="استخدام موقعي الحالي للالتقاء">${icon('gps')}</button><div class="real-map" id="request-map" role="region" aria-label="تحديد الالتقاء والوجهة على الخريطة" tabindex="0" aria-describedby="request-map-hint"></div><p class="map-help map-hint">${icon('hand')}<span id="request-map-hint"></span></p><p class="map-help" id="request-route-status" role="status">جاري تحميل الخريطة…</p></section><input name="distance" type="hidden" value="${d.distanceKm||0}">`;
 }
 function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,initialSearch=false}){
- let dead=false,seq=0,timer,places=[],active=-1,sessionToken=crypto.randomUUID();
+ let dead=false,seq=0,timer,places=[],active=-1,sessionToken=searchToken();
  function clear(){places=[];active=-1;results.replaceChildren();results.hidden=true;input.setAttribute('aria-expanded','false');}
  async function search(){
   clearTimeout(timer);const query=input.value.trim(),token=++seq;clear();
@@ -21,7 +24,7 @@ function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,init
  async function select(place){
   const token=++seq;clearTimeout(timer);status.textContent='جاري تحديد المكان…';for(const b of results.querySelectorAll('button'))b.disabled=true;
   const current=()=>!dead&&seq===token;
-  try{await onSelect(place,current);if(current()){input.value=place.label;clear();status.textContent='';sessionToken=crypto.randomUUID();}}
+  try{await onSelect(place,current);if(current()){input.value=place.label;clear();status.textContent='';sessionToken=searchToken();}}
   catch(e){if(current()){status.textContent=e.message;for(const b of results.querySelectorAll('button'))b.disabled=false;}}
  }
  input.addEventListener('input',()=>{seq++;clear();onEdit();status.textContent='';if(button)button.disabled=false;clearTimeout(timer);timer=setTimeout(search,350);});
@@ -32,7 +35,7 @@ function bindSearch({input,results,status,api,onSelect,onEdit=()=>{},button,init
  });
  if(button)button.onclick=search;
  if(initialSearch&&input.value.trim().length>=2)timer=setTimeout(search,350);
- const cancel=()=>{seq++;clearTimeout(timer);clear();status.textContent='';sessionToken=crypto.randomUUID();if(button)button.disabled=false;};
+ const cancel=()=>{seq++;clearTimeout(timer);clear();status.textContent='';sessionToken=searchToken();if(button)button.disabled=false;};
  const stop=()=>{dead=true;cancel();};stop.cancel=cancel;return stop;
 }
 export function bindLocationFields({draft,api,onChange,toast}){
@@ -41,8 +44,8 @@ export function bindLocationFields({draft,api,onChange,toast}){
  const title=field=>field==='pickup'?'الالتقاء':'الوجهة';
  const target=()=>!draft.pickupPoint?'pickup':!draft.destinationPoint?'destination':active;
  function changed(invalidate=true){
-  const field=target();el.dataset.selectionTarget=field;
-  document.querySelector('#request-map-hint').textContent=`اضغط مطولًا على الخريطة لتحديد ${title(field)}. اضغط مطولًا على الدبوس لإلغائه.`;
+  const field=target();el.dataset.selectionTarget=field;el.setAttribute('aria-label',`اضغط مطولًا لتحديد ${title(field)}، واضغط مطولًا على الدبوس لإلغائه`);
+  document.querySelector('#request-map-hint').textContent=`اضغط مطولًا لتحديد ${title(field)}`;
   if(invalidate){document.querySelector('[name=distance]').value=0;onChange({pending:pending.size>0});}
  }
  async function refreshMap(refit=false,preview={}){

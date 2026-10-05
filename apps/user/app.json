@@ -1,1 +1,36 @@
-{"id": "transport-user", "apiPrefix": "/api/user", "cookie": "transport_user_session", "files": ["index.html", "user.js", "styles.css", "manifest.webmanifest", "icon.svg", "base.css", "maps.js", "maps.css", "map-picker.js", "pickup-side.webp", "flatbed-side.webp", "water-tanker-side.webp", "google-map.js"]}
+{
+  "id": "transport-user",
+  "apiPrefix": "/api/user",
+  "cookie": "transport_user_session",
+  "files": [
+    "index.html",
+    "user.js",
+    "styles.css",
+    "manifest.webmanifest",
+    "icon.svg",
+    "base.css",
+    "maps.js",
+    "maps.css",
+    "map-picker.js",
+    "pickup-side.webp",
+    "flatbed-side.webp",
+    "water-tanker-side.webp",
+    "google-map.js",
+    "booking.css",
+    "icons.js",
+    "wasil-wordmark.webp",
+    "fonts/tajawal-regular.ttf",
+    "fonts/tajawal-medium.ttf",
+    "fonts/tajawal-bold.ttf",
+    "fonts/tajawal-extrabold.ttf",
+    "vehicles/pickup-small.webp",
+    "vehicles/pickup-medium.webp",
+    "vehicles/pickup-large.webp",
+    "vehicles/flatbed.webp",
+    "vehicles/dyna.webp",
+    "vehicles/trailer.webp",
+    "vehicles/gas.webp",
+    "vehicles/water.webp",
+    "vehicles/sweet-water.webp"
+  ]
+}
