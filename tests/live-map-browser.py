@@ -38,9 +38,18 @@ with sync_playwright() as p:
   page.goto(base,wait_until='domcontentloaded');page.locator('[data-category=light]').click()
   expect(page.locator('#request-map')).to_be_visible()
   expect(page.locator('#request-map')).to_have_attribute('data-map-provider',re.compile('^(Google|OpenStreetMap)$'),timeout=30000)
+  # Google inserts its logo before tilesloaded. A loaded image alone does not
+  # mean MapView has enabled projection-based pointer selection.
+  if page.locator('#request-map').get_attribute('data-map-provider')=='Google':
+   expect(page.locator('#request-map')).to_have_attribute('data-map-ready','true',timeout=30000)
   page.wait_for_function("() => [...document.querySelectorAll('#request-map img')].some(i=>i.complete&&i.naturalWidth>0)",timeout=30000)
   # Real SDK/container projection and native pointer holds, independent of autocomplete quota.
-  hold(page);expect(page.locator('#request-map [data-location-pin=pickup]')).to_be_visible(timeout=30000)
+  try:
+   hold(page);expect(page.locator('#request-map [data-location-pin=pickup]')).to_be_visible(timeout=30000)
+  except AssertionError:
+   page.screenshot(path=str(OUT/(name+'-first-hold-failure.png')),full_page=True)
+   print(json.dumps({'mapReady':page.locator('#request-map').get_attribute('data-map-ready'),'routeStatus':page.locator('#request-route-status').inner_text(),'errors':errors,'blockedRequests':forbidden},ensure_ascii=False),flush=True)
+   raise
   hold(page,position=(.7,.65));expect(page.locator('#request-map [data-location-pin=destination]')).to_be_visible(timeout=30000)
   expect(page.locator('.service-step')).to_be_visible()
   hold(page,'#request-map [data-location-pin=pickup]',(.5,.5));expect(page.locator('#request-map [data-location-pin=pickup]')).to_have_count(0)
