@@ -20,9 +20,15 @@ assert not read_only_request('POST',base+'/api/user/orders')
 assert not read_only_request('POST',base+'/api/user/register')
 assert not read_only_request('POST','https://maps.googleapis.com/other-rpc')
 def hold(page,selector='#request-map',position=(.3,.35)):
- locator=page.locator(selector);locator.scroll_into_view_if_needed();box=locator.bounding_box()
+ # Route/address responses redraw pins. Scroll the persistent map container,
+ # then resolve the current pin rather than waiting on a detached overlay.
+ page.locator('#request-map').scroll_into_view_if_needed()
+ locator=page.locator(selector);expect(locator).to_be_visible(timeout=30000)
+ box=locator.bounding_box()
  assert box
- page.mouse.move(box['x']+box['width']*position[0],box['y']+box['height']*position[1]);page.mouse.down();page.wait_for_timeout(680);page.mouse.up()
+ page.mouse.move(box['x']+box['width']*position[0],box['y']+box['height']*position[1]);page.mouse.down()
+ try:page.wait_for_timeout(680)
+ finally:page.mouse.up()
 
 with sync_playwright() as p:
  for name in (['chromium','webkit'] if os.environ.get('TEST_WEBKIT')=='1' else ['chromium']):
