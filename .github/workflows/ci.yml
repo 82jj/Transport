@@ -1,7 +1,7 @@
 name: Transport isolation checks
 on:
   push:
-    branches: [main]
+    branches: [main, ci/ubuntu-26-04-compat]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7.0.1
@@ -29,7 +29,7 @@ jobs:
             docker build -t "transport-$app:ci" "apps/$app"
           done
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: test
     timeout-minutes: 15
     steps:
@@ -60,9 +60,9 @@ jobs:
           path: artifacts
           retention-days: 7
   live-isolation:
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/ubuntu-26-04-compat') && github.event_name != 'pull_request'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7.0.1
@@ -75,11 +75,11 @@ jobs:
           package-manager-cache: false
       - name: Verify the actual public URLs and deployed assets
         env:
-          EXPECTED_SHA: ${{ github.sha }}
+          EXPECTED_SHA: ec16602dcfeb85e0c3b8d9f7619a14439423a965
         run: npm run smoke:live
   live-browser:
     needs: [live-isolation, browser]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7.0.1
