@@ -1,6 +1,6 @@
 """Correct the pinned WebKit test driver's native geolocation override units.
 
-Observed in CI 37139989027 with Playwright 1.57.0 / WebKit 2227:
+Observed in CI 37139989027 with Playwright 1.57.0 / WebKit 2227; revalidated for Playwright 1.61.1:
  native position.timestamp = 1791048003973000; Date.now() = 1791048004339.
 The driver sends milliseconds to a native override expecting seconds, producing
 1000x epoch timestamps. Convert the PROTOCOL INPUT, not returned browser fixes.
@@ -13,7 +13,7 @@ import playwright
 from playwright.sync_api import sync_playwright
 
 assert Path(sys.prefix).resolve()==Path('/tmp/transport-ui-env'), 'Patch is permitted only in the disposable CI browser venv'
-assert importlib.metadata.version('playwright')=='1.57.0', 'Re-evaluate the clock patch for another Playwright version'
+assert importlib.metadata.version('playwright')=='1.61.1', 'Re-evaluate the clock patch for another Playwright version'
 path=Path(playwright.__file__).parent/'driver/package/lib/server/webkit/wkBrowser.js'
 old='const payload = geolocation ? { ...geolocation, timestamp: Date.now() } : void 0;'
 new='const payload = geolocation ? { ...geolocation, timestamp: Date.now() / 1000 } : void 0;'
