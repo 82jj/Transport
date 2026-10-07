@@ -14,7 +14,9 @@ from playwright.sync_api import sync_playwright
 
 assert Path(sys.prefix).resolve()==Path('/tmp/transport-ui-env'), 'Patch is permitted only in the disposable CI browser venv'
 assert importlib.metadata.version('playwright')=='1.61.0', 'Re-evaluate the clock patch for another Playwright version'
-path=Path(playwright.__file__).parent/'driver/package/lib/server/webkit/wkBrowser.js'
+matches=list((Path(playwright.__file__).parent/'driver').rglob('wkBrowser.js'))
+assert len(matches)==1, f'Expected one WebKit driver source, found: {matches}'
+path=matches[0]
 old='const payload = geolocation ? { ...geolocation, timestamp: Date.now() } : void 0;'
 new='const payload = geolocation ? { ...geolocation, timestamp: Date.now() / 1000 } : void 0;'
 source=path.read_text()
