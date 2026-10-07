@@ -60,7 +60,7 @@ jobs:
           path: artifacts
           retention-days: 7
   live-isolation:
-    if: github.event_name == 'pull_request'
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-26.04
     timeout-minutes: 20
@@ -75,7 +75,7 @@ jobs:
           package-manager-cache: false
       - name: Verify the actual public URLs and deployed assets
         env:
-          EXPECTED_SHA: ec16602dcfeb85e0c3b8d9f7619a14439423a965
+          EXPECTED_SHA: ${{ github.sha }}
         run: npm run smoke:live
   live-browser:
     needs: [live-isolation, browser]
