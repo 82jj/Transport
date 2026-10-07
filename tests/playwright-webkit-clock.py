@@ -1,11 +1,11 @@
-"""Correct the pinned WebKit test driver's native geolocation override units.
+"""Verify native geolocation timestamp units with the pinned Playwright version.
 
-Observed in CI 37139989027 with Playwright 1.57.0 / WebKit 2227:
- native position.timestamp = 1791048003973000; Date.now() = 1791048004339.
-The driver sends milliseconds to a native override expecting seconds, producing
-1000x epoch timestamps. Convert the PROTOCOL INPUT, not returned browser fixes.
+Playwright 1.57.0 / WebKit 2227 required a narrow CI-only driver patch because
+native position timestamps were 1000x epoch milliseconds. Playwright 1.61.0
+changes the packaged driver layout and adds Ubuntu 26.04 support. Locate the
+single bundled driver source by its exact geolocation payload before applying
+the same CI-only unit correction, then validate the browser behavior directly.
 Production JS, API freshness/consent checks and navigator callbacks stay intact.
-Remove/re-evaluate this narrow compatibility patch when upgrading Playwright.
 """
 import importlib.metadata,sys,time
 from pathlib import Path
@@ -13,16 +13,27 @@ import playwright
 from playwright.sync_api import sync_playwright
 
 assert Path(sys.prefix).resolve()==Path('/tmp/transport-ui-env'), 'Patch is permitted only in the disposable CI browser venv'
-assert importlib.metadata.version('playwright')=='1.57.0', 'Re-evaluate the clock patch for another Playwright version'
-path=Path(playwright.__file__).parent/'driver/package/lib/server/webkit/wkBrowser.js'
+assert importlib.metadata.version('playwright')=='1.61.0', 'Re-evaluate the clock patch for another Playwright version'
+driver_root=Path(playwright.__file__).parent/'driver'
 old='const payload = geolocation ? { ...geolocation, timestamp: Date.now() } : void 0;'
 new='const payload = geolocation ? { ...geolocation, timestamp: Date.now() / 1000 } : void 0;'
-source=path.read_text()
+matches=[]
+for candidate in driver_root.rglob('*'):
+ if candidate.suffix not in {'.js','.cjs','.mjs'}:
+  continue
+ try:
+  source=candidate.read_text()
+ except (UnicodeDecodeError,OSError):
+  continue
+ if old in source or new in source:
+  matches.append((candidate,source))
+assert len(matches)==1, f'Expected one WebKit geolocation driver source, found: {[str(path) for path,_ in matches]}'
+path,source=matches[0]
 if old in source:
  assert source.count(old)==1
  path.write_text(source.replace(old,new))
 else:
- assert source.count(new)==1, 'Unexpected WebKit driver source; do not patch blindly'
+ assert source.count(new)==1, 'Unexpected WebKit geolocation driver source; do not patch blindly'
 
 with sync_playwright() as p:
  for engine in ['chromium','webkit']:
