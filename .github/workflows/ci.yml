@@ -1,7 +1,7 @@
 name: Transport isolation checks
 on:
   push:
-    branches: [main, ci/ubuntu-26-04-compat]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -60,7 +60,7 @@ jobs:
           path: artifacts
           retention-days: 7
   live-isolation:
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/ubuntu-26-04-compat') && github.event_name != 'pull_request'
+    if: github.event_name == 'pull_request'
     needs: test
     runs-on: ubuntu-26.04
     timeout-minutes: 20
