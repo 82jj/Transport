@@ -43,7 +43,7 @@ jobs:
       - name: Install isolated browser test tools
         run: |
           python3 -m venv /tmp/transport-ui-env
-          /tmp/transport-ui-env/bin/pip install playwright==1.57.0
+          /tmp/transport-ui-env/bin/pip install playwright==1.61.1
           /tmp/transport-ui-env/bin/playwright install --with-deps chromium webkit
       - name: Correct and verify pinned WebKit geolocation protocol units
         run: /tmp/transport-ui-env/bin/python tests/playwright-webkit-clock.py
@@ -92,7 +92,7 @@ jobs:
       - name: Install browser test tools
         run: |
           python3 -m venv /tmp/transport-ui-env
-          /tmp/transport-ui-env/bin/pip install playwright==1.57.0
+          /tmp/transport-ui-env/bin/pip install playwright==1.61.1
           /tmp/transport-ui-env/bin/playwright install --with-deps chromium webkit
       - name: Verify pinned browser clock compatibility in an isolated page
         run: /tmp/transport-ui-env/bin/python tests/playwright-webkit-clock.py
